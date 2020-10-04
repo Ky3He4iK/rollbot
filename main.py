@@ -17,7 +17,7 @@ stats = {20: {i: 0 for i in range(1, 21)}}
 MASTER_ID = 351693351
 
 
-# возвращает рандомное число от 1 до dice включительно и добавляет результат в статистику
+# returns an integer from 1 to dice inclusively and add result to stats
 def rnd(dice):
     global stats
     if dice < 0:
@@ -35,9 +35,7 @@ def rnd(dice):
     return res
 
 
-# преобразует строку (любой контейнер, к которому можно применить len() и int()) в число
-# И ограничивает значениями от min_v до max_v
-# Если не получилось, возвращает default
+# converts string to integer bounded to [min_v, max_v]. Returns default on fault
 def to_int(data, *_, default=20, min_v=1, max_v=1000000):
     if len(data) == 0:
         return default
@@ -47,37 +45,38 @@ def to_int(data, *_, default=20, min_v=1, max_v=1000000):
         return default
 
 
-# принимает update и context
+# params: update and context
 def roll(update, _):
-    # получение имени пользователя (в первую очередь юзернейм)
+    # get username or user's name
     name = str(update.message.from_user.name)
     if name == 'None':
         name = str(update.message.from_user.firstname)
 
-    # отделение комментария и получение инфы о броске
+    # separating comment and roll params
     ts = update.message.text.split(' ', 2)
-    if len(ts) == 1:  # если только /d
+    if len(ts) == 1:  # only `/r`
         rolls_cnt = 1
         rolls_dice = 20
         comment = ''
     else:
         data = ts[1].split('d')
         comment = ts[2] if len(ts) == 3 else ''
-        if len(data) == 1 and data[0].isnumeric():  # если d в записи нет и это число - кол-во роллов d20
+        if len(data) == 1 and data[0].isnumeric():  # if there is no `d`
             rolls_cnt = to_int(data[0], default=1, max_v=1000)
             rolls_dice = 20
-        # d встречается только 1 раз и это запись вида 5d7
-        elif len(data) == 2 and data[0].isnumeric() and data[1].isnumeric():
+        # d is occupied only once and this is something like 4d7 or 9d%
+        elif len(data) == 2 and (data[0].isnumeric() or len(data[0]) == 0) \
+                and (data[1].isnumeric() or data[1] == '%' or len(data[1]) == 0):
             rolls_cnt = to_int(data[0], default=1, max_v=1000)
             rolls_dice = to_int(data[1], default=20)
             if data[1] == '%':
                 rolls_dice = 100
-        else:  # иначе это просто часть коммента
+        else:  # otherwise its only part of the comment
             rolls_cnt = 1
             rolls_dice = 20
             comment = ts[1] + ' ' + comment
 
-    # получение роллов и генерация текста
+    # get numbers and generate text
     rolls = [rnd(rolls_dice) for _ in range(rolls_cnt)]
     text = name + ': ' + comment + '\n' + ' + '.join(str(r) for r in rolls)
     update.message.reply_text(text if len(text) < 4000 else (text[:3996] + "..."))
@@ -225,52 +224,59 @@ def r2(update, _):
     update.message.reply_text(text if len(text) < 4000 else (text[:3996] + "..."))
 
 
-# просто пинг
+# just ping
 def ping(update, _):
     update.message.reply_text('Pong!')
     print('ping!')
 
 
-# получение стат (только d20)
+# get stats only to d20
 def get_stats(update, _):
-    msg = "Stats for this bot:\nUptime: {} hours\nd20 stats (%):".format(str((time.time() - start_time) / 3600))
     overall = sum(stats[20].values())
+    msg = "Stats for this bot:\nUptime: {} hours\nd20 stats (%): from {} rolls".format(
+        str((time.time() - start_time) / 3600), str(overall))
     for i in range(1, 21):
-        msg += "\n{}: {}".format(str(i), str(stats[20][i] / overall * 100))
+        if i in stats[20]:
+            msg += "\n{}: {}".format(str(i), str(stats[20][i] / overall * 100))
     update.message.reply_text(msg)
 
 
-# получение всех стат
+# get all stats
 def get_full_stats(update, _):
     msg = "Stats for this bot:\nUptime: {} hours".format(str((time.time() - start_time) / 3600))
     for key in stats:
-        msg += "\nd{} stats (%)".format(str(key))
         overall = sum(stats[key].values())
+        msg += "\nd{} stats (%): from {} rolls".format(str(key), str(overall))
         for i in range(1, key + 1):
             if i in stats[key]:
                 msg += "\n{}: {}".format(str(i), str(stats[key][i] / overall * 100))
     update.message.reply_text(msg)
 
 
-# логгировать все ошибки
+# log all errors
 def error_handler(update, context):
-    logger.error('Error: ' + str(context) + " (" + str(context.error) + ") caused by " + str(update))
+    logger.error('Error: {} ({} {}) caused.by {}'.format(
+        str(context), str(type(context.error)), str(context.error), str(update)))
     print("Error: " + str(context.error))
     if update.message is not None:
         update.message.reply_text("Error")
-        context.bot.send_message(chat_id=MASTER_ID, text="Error: " + str(context.error)[:3000] + " for message " + str(
-            update.message.text)[:3000])
+        context.bot.send_message(chat_id=MASTER_ID,
+                                 text="Error: {} {} for message {}".format(str(type(context.error))[:1000],
+                                                                           str(context.error)[:3000],
+                                                                           str(update.message.text)[:3000]))
 
 
-# старт бота
+# start
 def init(token):
-    # загрузка стат
+    # stats loading
     global stats
     if os.path.isfile("stats.json"):
-        stats = json.loads(open("stats.json").read())
+        # convert dict's keys from str to int
+        stats_t = json.loads(open("stats.json").read())
+        stats = {int(dice): {int(res): stats_t[dice][res] for res in stats_t[dice]} for dice in stats_t}
 
     updater = Updater(token=token, use_context=True)
-    # добавление обработчиков команд
+    # adding handlers
     for command, func in (
             ('ping', ping),
             ('r', roll),
@@ -284,7 +290,7 @@ def init(token):
     updater.start_polling()
     updater.idle()
 
-    # сохранение статистики в файл
+    # saving stats
     f = open("stats.json", 'w')
     f.write(json.dumps(stats))
     f.close()
