@@ -80,7 +80,7 @@ def roll(update, _):
     rolls = [rnd(rolls_dice) for _ in range(rolls_cnt)]
     text = name + ': ' + comment + '\n' + ' + '.join(str(r) for r in rolls)
     if rolls_cnt > 1:
-        text += '\nSum: ' + sum(rolls)
+        text += '\nSum: ' + str(sum(rolls))
     update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
 
 
