@@ -84,6 +84,19 @@ def roll(update, _):
     update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
 
 
+def roll3d6(update, _):
+    name = str(update.message.from_user.name)
+    if name == 'None':
+        name = str(update.message.from_user.firstname)
+    ts = update.message.text.split(' ', 1)
+    if len(ts) == 1:
+        comment = ''
+    else:
+        comment = ts[1]
+    rolls = [rnd(6) for _ in range(3)]
+    text = name + ': ' + comment + '\n' + ' + '.join(str(r) for r in rolls) + '\nSum: ' + str(sum(rolls))
+    update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
+
 def r2(update, _):
     # todo: round for [], div with floor
     n = str(update.message.from_user.name)
@@ -282,6 +295,7 @@ def init(token):
     for command, func in (
             ('ping', ping),
             ('r', roll),
+            ('3d6', roll3d6),
             ('d', r2),
             ('stats', get_stats),
             ('statsall', get_full_stats),
