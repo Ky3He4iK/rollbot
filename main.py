@@ -183,6 +183,7 @@ def init(token):
             ('ping', ping),
             ('r', simple_roll),
             ('3d6', roll3d6),
+            ('c', roll3d6),
             ('d', r2),
             ('stats', get_stats),
             ('statsall', get_full_stats),
