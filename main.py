@@ -67,7 +67,7 @@ def simple_roll(update, context):
                 rolls_info = 'Max of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(max(rolls))
             elif mod == 'l':
                 rolls_info = 'Min of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(min(rolls))
-            elif sanity_bound(mod, ONLY_DIGITS):
+            elif sanity_bound(mod, ONLY_DIGITS) == len(mod) > 0:  # PyCharm says it's ok. I hope so
                 rolls_info = '(' + rolls_info + ') ' + mod_act + ' ' + mod + ' = ' + \
                              str(eval(str(sum(rolls)) + mod_act + mod))
             else:
@@ -94,7 +94,7 @@ def roll3d6(update, _):
 
 
 def r2(update, _):
-    s, rolls, rest = roll_processing(update.message.text, random_generator=rnd)
+    s, rolls, rest = roll_processing(update.message.text[2:], random_generator=rnd)
     r = calc(s)
     reply_to_message(update, get_user_name(update) + ': ' + rest + '\n' + s + '\n' +
                      (r[1] if r[0] is None else (' = ' + str(r[0]))))

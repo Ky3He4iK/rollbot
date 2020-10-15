@@ -1,6 +1,5 @@
 ONLY_DIGITS = ''.join(str(i) for i in range(10))
-DIGITS_WITH_D_PERCENT = ONLY_DIGITS + 'dD%'
-DICE_NOTATION = DIGITS_WITH_D_PERCENT + '+-*/hHlL '
+DICE_NOTATION = ONLY_DIGITS + 'dD%+-*/hHlL '
 
 
 def reply_to_message(update, text):
@@ -28,42 +27,30 @@ def to_int(data, *_, default, max_v, min_v=1):
         return default
 
 
+# s - string with some expression and dices in format `5d9`
+#   (one or both arguments may be missing. Default value is 1d20; `d%` is `d100`)
+# random_generator - function that returns value from 1 to given argument inclusively
 def roll_processing(s, random_generator):
-    i = 2
-    allow = 'd1234567890% +-*/^()[]'
-    while i < len(s) and s[i] in allow:
-        i += 1
-    rest = s[i:]
-    s = s[2:i].strip()
-    i = 0
-    rolls = []
+    i = sanity_bound(s, ONLY_DIGITS + 'd% +-*/()')
+    rest, s = s[i:], s[2:i].strip()
+    if len(s) == 0:
+        s = 'd'
+    i, rolls = 0, []
     while i < len(s):
-        if s[i] == 'd':
-            j = i - 1
+        if s[i] == 'd':  # found dice
+            j = i - 1  # j is left border for dice count
             while j >= 0 and s[j].isnumeric():
                 j -= 1
-            if j + 1 < i:
-                cnt = to_int(s[j + 1:i], max_v=1000, default=1)
+            cnt = to_int(s[j + 1:i], max_v=1000, default=1)
+            k = i + 1  # k is right border for dice max value
+            if i + 1 < len(s) and s[i + 1] == '%':
+                mod = 100
             else:
-                cnt = 1
-            if i + 1 == len(s):
-                mod = 20
-                k = i
-            else:
-                if s[i + 1] == '%':
-                    mod = 100
-                    k = i + 1
-                elif s[i + 1].isnumeric():
-                    k = i + 1
-                    while k < len(s) and s[k].isnumeric():
-                        k += 1
-                    mod = to_int(s[i + 1:k], max_v=1000000, default=20)
-                    k -= 1
-                else:
-                    k = i
-                    mod = 20
-            for _ in range(cnt):
-                rolls.append(str(random_generator(mod)))
+                while k < len(s) and s[k].isnumeric():
+                    k += 1
+                mod = to_int(s[i + 1:k], max_v=1000000, default=20)
+                k -= 1
+            rolls += [str(random_generator(mod)) for _ in range(cnt)]
             added = '(' + '+'.join(rolls[len(rolls) - cnt:]) + ')'
             s = s[:j + 1] + added + s[k + 1:]
             i = j + len(added)
@@ -81,7 +68,6 @@ def calc(expression):
 
     # First part gets string and deletes whitespace
     # Then it creates the list and adds each individual character to the list
-
     expr_list = [int(ch) if ord('0') <= ord(ch) <= ord('9') else ch for ch in expression.replace(' ', '')]
     pos = 1
     # combine numbers together and check expression
