@@ -3,8 +3,13 @@ DIGITS_WITH_D_PERCENT = ONLY_DIGITS + 'dD%'
 DICE_NOTATION = DIGITS_WITH_D_PERCENT + '+-*/hHlL '
 
 
-# checks for sanity string
-def is_sane(string, allowed):
+def get_user_name(update):
+    return str(update.message.from_user.name) if update.message.from_user.name is not None \
+        else str(update.message.from_user.firstname)
+
+
+# checks for sanity string. Returns first not sane index
+def sanity_bound(string, allowed):
     for i in range(len(string)):
         if string[i] not in allowed:
             return i
@@ -12,10 +17,7 @@ def is_sane(string, allowed):
 
 
 # converts string to integer bounded to [min_v, max_v]. Returns default on fault
-def to_int(data, *_, default=20, min_v=1, max_v=1000000):
-    data = data.strip()
-    if len(data) == 0:
-        return default
+def to_int(data, *_, default, max_v, min_v=1):
     try:
         return min(max(int(data), min_v), max_v)
     except (TypeError, ValueError):
@@ -151,4 +153,4 @@ def calc(s, si, ei):
             i = j + len(n) - 1
         i += 1
 
-    return to_int(s[si:ei], default="Error")
+    return to_int(s[si:ei], default="Error", max_v=10000000)

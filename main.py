@@ -21,16 +21,12 @@ MASTER_ID = 351693351
 # returns an integer from 1 to dice inclusively and add result to stats
 def rnd(dice):
     global stats
-    if dice < 0:
-        dice = -dice
-    elif dice == 0 or dice > 1000000:
-        dice = 20
+    dice = max(dice, -dice)  # remove negative values
+    if dice == 0 or dice > 1000000:
+        dice = 20  # remove incorrect
     res = random.randrange(dice) + 1
     if dice in stats:
-        if res in stats[dice]:
-            stats[dice][res] += 1
-        else:
-            stats[dice][res] = 1
+        stats[dice][res] = 1 + (stats[dice][res] if res in stats[dice] else 0)
     else:
         stats[dice] = {res: 1}
     return res
@@ -44,74 +40,58 @@ def simple_roll(update, _):
         name = str(update.message.from_user.firstname)
 
     # separating comment and roll params
-    ts = update.message.text.split(' ', 2)
-    mod_act, mod = None, None
-    if len(ts) == 1:  # only `/r`
-        rolls_cnt = 1
-        rolls_dice = 20
-        comment = ''
-    elif not is_sane(ts[1], DICE_NOTATION):
-        rolls_cnt = 1
-        rolls_dice = 20
-        comment = ' '.join(ts[1:])
-    else:
-        if 'd' in ts[1]:
-            data = ts[1].split('d')
-        else:
-            data = ts[1].split('D')
-        comment = ts[2] if len(ts) == 3 else ''
-        if len(data) == 1 and data[0].isnumeric():  # if there is no `d`
-            rolls_cnt = to_int(data[0], default=1, max_v=1000)
-            rolls_dice = 20
-        # d is occupied only once and this is something like 4d7 or 9d%
-        elif len(data) == 2 and (data[0].isnumeric() or len(data[0]) == 0):
-            for act in '+-*/':
-                if act in data[1]:
-                    mod_act = act
-                    data[1], mod = [s.strip() for s in data[1].split(act, 1)]
-                    break
+    ts = update.message.text.split(' ', 1)
+    mod_act, mod, rolls_cnt, rolls_dice, comment = None, None, 1, 20, ''  # default values
+    if len(ts) > 1:  # not only `r`
+        # cut out comment
+        split_pos = sanity_bound(ts[1], DICE_NOTATION)
+        command, comment = ts[1][:split_pos].strip().lower(), ts[1][split_pos:].strip()
 
-            if data[1].isnumeric() or data[1] == '%' or len(data[1]) == 0:
-                rolls_cnt = to_int(data[0], default=1, max_v=1000)
-                rolls_dice = to_int(data[1], default=20)
-                if data[1] == '%':
-                    rolls_dice = 100
+        # cut out appendix (+6, *4, etc.)
+        for i in range(len(command)):
+            if command[i] in '+-*/':
+                mod_act = command[i]
+                if mod_act == '/':
+                    mod_act = '//'
+                command, mod = [s.strip() for s in command.split(command[i], 1)]
+                split_pos = sanity_bound(mod, ONLY_DIGITS)  # remove other actions
+                mod, comment = mod[:split_pos], mod[split_pos:] + comment
+                break
+
+        command = command.split('d')
+        rolls_cnt = to_int(command[0], default=1, max_v=1000)
+        if len(command) > 1:
+            rolls_dice = to_int(command[1], default=20, max_v=1000000)
+
+    try:
+        # get numbers and generate text
+        rolls = [rnd(rolls_dice) for _ in range(rolls_cnt)]
+        rolls_info = ' + '.join(str(r) for r in rolls)
+        if mod_act is not None:
+            if mod == 'h':
+                rolls_info = 'Max of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(max(rolls))
+            elif mod == 'l':
+                rolls_info = 'Min of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(min(rolls))
+            elif sanity_bound(mod, ONLY_DIGITS):
+                rolls_info = '(' + rolls_info + ') ' + mod_act + ' ' + mod + ' = ' + str(
+                    eval(str(sum(rolls)) + mod_act + mod))
             else:
-                rolls_cnt = 1
-                rolls_dice = 20
-                comment = ts[1] + ' ' + comment
-        else:  # otherwise its only part of the comment
-            rolls_cnt = 1
-            rolls_dice = 20
-            comment = ts[1] + ' ' + comment
-
-    # get numbers and generate text
-    rolls = [rnd(rolls_dice) for _ in range(rolls_cnt)]
-    rolls_info = ' + '.join(str(r) for r in rolls)
-    if mod_act is not None:
-        if mod.capitalize() == 'H':
-            rolls_info = 'Max of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(max(rolls))
-        elif mod.capitalize() == 'L':
-            rolls_info = 'Min of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(min(rolls))
-        elif is_sane(mod, ONLY_DIGITS):
-            rolls_info = '(' + rolls_info + ') ' + mod_act + ' ' + mod + ' = ' + str(eval(str(sum(rolls)) + mod_act + mod))
-    text = name + ': ' + comment + '\n' + rolls_info
-    if rolls_cnt > 1:
-        text += '\nSum: ' + str(sum(rolls))
-    update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
+                comment = mod_act + mod + comment
+        text = name + ': ' + comment + '\n' + rolls_info
+        if rolls_cnt > 1 and mod_act is None:
+            text += '\nSum: ' + str(sum(rolls))
+        update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
+    except Exception as e:
+        print(e)
+        update.message.reply_text(name + ': ' + update.message.text[2:] + '\n' + str(rnd(20)))
 
 
 def roll3d6(update, _):
-    name = str(update.message.from_user.name)
-    if name == 'None':
-        name = str(update.message.from_user.firstname)
     ts = update.message.text.split(' ', 1)
-    if len(ts) == 1:
-        comment = ''
-    else:
-        comment = ts[1]
+    comment = '' if len(ts) == 1 else ts[1]
     rolls = [rnd(6) for _ in range(3)]
-    text = name + ': ' + comment + '\n' + ' + '.join(str(r) for r in rolls) + '\nSum: ' + str(sum(rolls))
+    text = get_user_name(update) + ': ' + comment + '\n' + \
+           ' + '.join(str(r) for r in rolls) + '\nSum: ' + str(sum(rolls))
     update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
 
 
