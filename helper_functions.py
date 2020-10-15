@@ -3,6 +3,10 @@ DIGITS_WITH_D_PERCENT = ONLY_DIGITS + 'dD%'
 DICE_NOTATION = DIGITS_WITH_D_PERCENT + '+-*/hHlL '
 
 
+def reply_to_message(update, text):
+    update.message.reply_text(text if len(text) < 4000 else (text[:3996] + "..."))
+
+
 def get_user_name(update):
     return str(update.message.from_user.name) if update.message.from_user.name is not None \
         else str(update.message.from_user.firstname)
@@ -67,90 +71,68 @@ def roll_processing(s, random_generator):
     return s, rolls, rest
 
 
-def calc(s, si, ei):
-    def subsearch(i):
-        j = i - 1
-        ws = False
-        while j >= 0 and (s[j].isnumeric() or (s[j] == ' ' and not ws)):
-            ws |= s[j] == ' '
-            j -= 1
-        fn = to_int(s[j + 1:i].strip(), max_v=1000, default=1)
-        k = i + 1
-        ws = False
-        while k < ei and (s[k].isnumeric() or (s[k] == ' ' and not ws)):
-            ws |= s[k] == ' '
-            k += 1
-        sn = to_int(s[i + 1:k].strip(), max_v=1000000, default=20)
-        return j + 1, k, fn, sn
+def calc(expression):
+    # check item type
+    def is_int(item):
+        return type(item) == int
 
-    # parentheses
-    pc, spc, pcs, spcs = 0, 0, 0, 0
-    i = si
-    while i < ei:
-        if s[i] == '(':
-            if pc == 0:
-                pcs = i
-            pc += 1
-        elif s[i] == ')':
-            pc -= 1
-            if pc == 0:
-                r = calc(s, pcs + 1, i)
-                dr = i - pcs - len(str(r)) + 1
-                s = s[:pcs] + str(r) + s[i + 1:]
-                ei -= dr
-                i = i + 1
-        elif s[i] == '[':
-            if spc == 0:
-                spcs = i
-            spc += 1
-        elif s[i] == ']':
-            spc -= 1
-            if spc == 0:
-                r = calc(s, spcs + 1, i)
-                dr = i - pcs - len(str(r)) + 1
-                s = s[:spcs] + str(r) + s[i + 1:]
-                ei -= dr
-                i = i + 1
-        i += 1
-    # actual math
-    # ^
-    i = si
-    while i < ei:
-        if s[i] == '^':
-            j, k, fn, sn = subsearch(i)
-            n = str(fn ** sn)
-            r = len(s) - ei
-            s = s[:j] + n + s[k:]
-            ei = len(s) - r
-            i = j + len(n) - 1
-        i += 1
-    # */
-    i = si
-    while i < ei:
-        if s[i] == '*' or s[i] == '/':
-            j, k, fn, sn = subsearch(i)
-            if s[i] == '*':
-                n = str(fn * sn)
-            else:
-                n = str(fn // sn)
-            r = len(s) - ei
-            s = s[:j] + n + s[k:]
-            ei = len(s) - r
-            i = j + len(n) - 1
-        i += 1
-    # +-
-    i = si
-    while i < ei:
-        if s[i] == '+' or s[i] == '-':
-            j, k, fn, sn = subsearch(i)
-            if s[i] == '+':
-                n = str(fn + sn)
-            else:
-                n = str(fn - sn)
-            r = len(s) - ei
-            s = s[:j] + n + s[k:]
-            ei = len(s) - r
-            i = j + len(n) - 1
-        i += 1
+    def is_str(item):
+        return type(item) == str
 
-    return to_int(s[si:ei], default="Error", max_v=10000000)
+    # First part gets string and deletes whitespace
+    # Then it creates the list and adds each individual character to the list
+
+    expr_list = [int(ch) if ord('0') <= ord(ch) <= ord('9') else ch for ch in expression.replace(' ', '')]
+    pos = 1
+    # combine numbers together and check expression
+    while pos < len(expr_list):
+        if is_int(expr_list[pos - 1]) and expr_list[pos] == "(":
+            expr_list.insert(pos, '*')  # insert missing asterisk
+        elif is_int(expr_list[pos - 1]) and is_int(expr_list[pos]):
+            expr_list[pos - 1] = expr_list[pos - 1] * 10 + expr_list[pos]
+            del expr_list[pos]
+        else:
+            pos += 1
+
+    # If the length of the list is 1, there is only 1 number, meaning an answer has been reached.
+    try:
+        while len(expr_list) != 1:
+            changed = False  # if the are no changes then something is wrong. Preferably expression
+            # remove parentheses around a single item
+            pos = 2
+            while pos < len(expr_list):
+                if expr_list[pos - 2] == "(" and expr_list[pos] == ")":
+                    expr_list = expr_list[:pos - 2] + [expr_list[pos - 1]] + expr_list[pos + 1:]
+                    changed = True
+                pos += 1
+            # */
+            pos = 1
+            while pos < len(expr_list) - 1:
+                if is_str(expr_list[pos]) and is_int(expr_list[pos + 1]) and is_int(expr_list[pos - 1]) \
+                        and expr_list[pos] in "*/":
+                    if expr_list[pos] == '*':
+                        expr_list[pos - 1] *= expr_list[pos + 1]
+                    elif expr_list[pos] == '/':
+                        expr_list[pos - 1] //= expr_list[pos + 1]
+                    expr_list = expr_list[:pos] + expr_list[pos + 2:]
+                    changed = True
+                else:
+                    pos += 1
+            # +-
+            pos = 1
+            while pos < len(expr_list) - 1:
+                if is_str(expr_list[pos]) and is_int(expr_list[pos + 1]) and is_int(expr_list[pos - 1]) \
+                        and expr_list[pos] in "+-":
+                    if expr_list[pos] == '+':
+                        expr_list[pos - 1] += expr_list[pos + 1]
+                    elif expr_list[pos] == '-':
+                        expr_list[pos - 1] -= expr_list[pos + 1]
+                    expr_list = expr_list[:pos] + expr_list[pos + 2:]
+                    changed = True
+                else:
+                    pos += 1
+            if not changed:
+                return None, "Invalid expression"
+        return int(expr_list[0]), ""
+    except ZeroDivisionError:
+        return None, "Division by zero"

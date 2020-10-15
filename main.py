@@ -33,12 +33,7 @@ def rnd(dice):
 
 
 # params: update and context
-def simple_roll(update, _):
-    # get username or user's name
-    name = str(update.message.from_user.name)
-    if name == 'None':
-        name = str(update.message.from_user.firstname)
-
+def simple_roll(update, context):
     # separating comment and roll params
     ts = update.message.text.split(' ', 1)
     mod_act, mod, rolls_cnt, rolls_dice, comment = None, None, 1, 20, ''  # default values
@@ -73,37 +68,36 @@ def simple_roll(update, _):
             elif mod == 'l':
                 rolls_info = 'Min of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(min(rolls))
             elif sanity_bound(mod, ONLY_DIGITS):
-                rolls_info = '(' + rolls_info + ') ' + mod_act + ' ' + mod + ' = ' + str(
-                    eval(str(sum(rolls)) + mod_act + mod))
+                rolls_info = '(' + rolls_info + ') ' + mod_act + ' ' + mod + ' = ' + \
+                             str(eval(str(sum(rolls)) + mod_act + mod))
             else:
                 comment = mod_act + mod + comment
-        text = name + ': ' + comment + '\n' + rolls_info
+        text = get_user_name(update) + ': ' + comment + '\n' + rolls_info
         if rolls_cnt > 1 and mod_act is None:
             text += '\nSum: ' + str(sum(rolls))
         update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
     except Exception as e:
         print(e)
-        update.message.reply_text(name + ': ' + update.message.text[2:] + '\n' + str(rnd(20)))
+        context.bot.send_message(chat_id=MASTER_ID,
+                                 text="Error: {} {} for message {}".format(str(type(e))[:1000],
+                                                                           str(e)[:2000],
+                                                                           str(update.message.text)[:1000]))
+        update.message.reply_text(get_user_name(update) + ': ' + update.message.text[2:] + '\n' + str(rnd(20)))
 
 
 def roll3d6(update, _):
     ts = update.message.text.split(' ', 1)
     comment = '' if len(ts) == 1 else ts[1]
     rolls = [rnd(6) for _ in range(3)]
-    text = get_user_name(update) + ': ' + comment + '\n' + \
-           ' + '.join(str(r) for r in rolls) + '\nSum: ' + str(sum(rolls))
-    update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
+    reply_to_message(update, get_user_name(update) + ': ' + comment + '\n' + ' + '.join(str(r) for r in rolls)
+                     + '\nSum: ' + str(sum(rolls)))
 
 
 def r2(update, _):
-    name = str(update.message.from_user.name)
-    if name == 'None':
-        name = str(update.message.from_user.firstname)
-
     s, rolls, rest = roll_processing(update.message.text, random_generator=rnd)
-    r = calc(s, 0, len(s))
-    text = name + ': ' + rest + '\n' + s + '\n = ' + str(r)
-    update.message.reply_text(text if len(text) < 4000 else (text[:3996] + "..."))
+    r = calc(s)
+    reply_to_message(update, get_user_name(update) + ': ' + rest + '\n' + s + '\n' +
+                     (r[1] if r[0] is None else (' = ' + str(r[0]))))
 
 
 # just ping
@@ -116,36 +110,35 @@ def ping(update, _):
 def get_stats(update, _):
     overall = sum(stats[20].values())
     msg = "Stats for this bot:\nUptime: {} hours\nd20 stats (%): from {} rolls".format(
-        str((time.time() - start_time) / 3600), str(overall))
+        (time.time() - start_time) / 3600, overall)
     for i in range(1, 21):
         if i in stats[20]:
-            msg += "\n{}: {}".format(str(i), str(stats[20][i] / overall * 100))
-    update.message.reply_text(msg)
+            msg += "\n{}: {}".format(i, stats[20][i] / overall * 100)
+    reply_to_message(update, msg)
 
 
 # get all stats
 def get_full_stats(update, _):
-    msg = "Stats for this bot:\nUptime: {} hours".format(str((time.time() - start_time) / 3600))
+    msg = "Stats for this bot:\nUptime: {} hours".format((time.time() - start_time) / 3600)
     for key in stats:
         overall = sum(stats[key].values())
-        msg += "\nd{} stats (%): from {} rolls".format(str(key), str(overall))
+        msg += "\nd{} stats (%): from {} rolls".format(key, overall)
         for i in range(1, key + 1):
             if i in stats[key]:
-                msg += "\n{}: {}".format(str(i), str(stats[key][i] / overall * 100))
-    update.message.reply_text(msg)
+                msg += "\n{}: {}".format(i, stats[key][i] / overall * 100)
+    reply_to_message(update, msg)
 
 
 # log all errors
 def error_handler(update, context):
-    logger.error('Error: {} ({} {}) caused.by {}'.format(
-        str(context), str(type(context.error)), str(context.error), str(update)))
+    logger.error('Error: {} ({} {}) caused.by {}'.format(context, type(context.error), context.error, update))
     print("Error: " + str(context.error))
     if update.message is not None:
         update.message.reply_text("Error")
         context.bot.send_message(chat_id=MASTER_ID,
                                  text="Error: {} {} for message {}".format(str(type(context.error))[:1000],
-                                                                           str(context.error)[:3000],
-                                                                           str(update.message.text)[:3000]))
+                                                                           str(context.error)[:2000],
+                                                                           str(update.message.text)[:1000]))
 
 
 # start
