@@ -85,14 +85,6 @@ def custom_roll_wrapper(cnt, dice):
     return lambda update, context: simple_roll(update, context, cnt, dice)
 
 
-def roll3d6(update, _):
-    ts = update.message.text.split(' ', 1)
-    comment = '' if len(ts) == 1 else ts[1]
-    rolls = [rnd(6) for _ in range(3)]
-    reply_to_message(update, get_user_name(update) + ': ' + comment + '\n' + ' + '.join(str(r) for r in rolls)
-                     + '\nSum: ' + str(sum(rolls)))
-
-
 def equation_roll(update, _):
     s, rolls, rest = roll_processing(update.message.text[2:], random_generator=rnd)
     r = calc(s)
@@ -108,12 +100,20 @@ def ping(update, _):
 
 # get stats only to d20
 def get_stats(update, _):
-    overall = sum(stats[20].values())
-    msg = "Stats for this bot:\nUptime: {} hours\nd20 stats (%): from {} rolls".format(
-        (time.time() - start_time) / 3600, overall)
-    for i in range(1, 21):
-        if i in stats[20]:
-            msg += "\n{}: {}".format(i, stats[20][i] / overall * 100)
+    ts = update.message.text.split(' ', 2)
+    if len(ts) > 1:
+        dice = to_int(ts[0], default=20, max_v=1000000000)
+    else:
+        dice = 20
+    if dice in stats:
+        overall = sum(stats[dice].values())
+        msg = "Stats for this bot:\nUptime: {} hours\nd20 stats (%): from {} rolls".format(
+            (time.time() - start_time) / 3600, overall)
+        for i in range(1, 21):
+            if i in stats[dice]:
+                msg += "\n{}: {}".format(i, stats[20][i] / overall * 100)
+    else:
+        msg = "No information for this dice!"
     reply_to_message(update, msg)
 
 
@@ -125,7 +125,11 @@ def get_full_stats(update, _):
         msg += "\nd{} stats (%): from {} rolls".format(key, overall)
         for i in range(1, key + 1):
             if i in stats[key]:
-                msg += "\n{}: {}".format(i, stats[key][i] / overall * 100)
+                addition = "\n{}: {}".format(i, stats[key][i] / overall * 100)
+                if len(msg) + len(addition) > 4000:
+                    reply_to_message(update, msg)
+                    msg = ''
+                msg += addition
     reply_to_message(update, msg)
 
 
