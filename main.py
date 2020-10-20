@@ -109,9 +109,9 @@ def get_stats(update, _):
         overall = sum(stats[dice].values())
         msg = "Stats for this bot:\nUptime: {} hours\nd20 stats (%): from {} rolls".format(
             (time.time() - start_time) / 3600, overall)
-        for i in range(1, 21):
+        for i in range(1, dice + 1):
             if i in stats[dice]:
-                msg += "\n{}: {}".format(i, stats[20][i] / overall * 100)
+                msg += "\n{}: {}".format(i, stats[dice][i] / overall * 100)
     else:
         msg = "No information for this dice!"
     reply_to_message(update, msg)
