@@ -3,7 +3,15 @@ DICE_NOTATION = ONLY_DIGITS + 'dD%+-*/hHlL '
 
 
 def reply_to_message(update, text):
-    update.message.reply_text(text if len(text) < 4000 else (text[:3996] + "..."))
+    while len(text) > 4095:
+        last = text[:4096].rfind('\n')
+        if last == -1:
+            update.message.reply_text(text[:4092] + '...')
+            text = text[4092:]
+        else:
+            update.message.reply_text(text[:last])
+            text = text[last + 1:]
+    update.message.reply_text(text)
 
 
 def get_user_name(update):
