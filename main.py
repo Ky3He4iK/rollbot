@@ -102,7 +102,7 @@ def ping(update, _):
 def get_stats(update, _):
     ts = update.message.text.split(' ', 2)
     if len(ts) > 1:
-        dice = to_int(ts[0], default=20, max_v=1000000000)
+        dice = to_int(ts[1], default=20, max_v=1000000000)
     else:
         dice = 20
     if dice in stats:
