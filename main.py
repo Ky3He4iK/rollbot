@@ -33,10 +33,10 @@ def rnd(dice):
 
 
 # params: update and context
-def simple_roll(update, context):
+def simple_roll(update, _, cnt=1, dice=20):
     # separating comment and roll params
     ts = update.message.text.split(' ', 1)
-    mod_act, mod, rolls_cnt, rolls_dice, comment = None, None, 1, 20, ''  # default values
+    mod_act, mod, rolls_cnt, rolls_dice, comment = None, None, cnt, dice, ''  # default values
     if len(ts) > 1:  # not only `r`
         # cut out comment
         split_pos = sanity_bound(ts[1], DICE_NOTATION)
@@ -54,9 +54,9 @@ def simple_roll(update, context):
                 break
 
         command = command.split('d')
-        rolls_cnt = to_int(command[0], default=1, max_v=1000)
+        rolls_cnt = to_int(command[0], default=cnt, max_v=1000)
         if len(command) > 1:
-            rolls_dice = to_int(command[1], default=20, max_v=1000000)
+            rolls_dice = to_int(command[1], default=dice, max_v=1000000)
 
     try:
         # get numbers and generate text
@@ -77,12 +77,12 @@ def simple_roll(update, context):
             text += '\nSum: ' + str(sum(rolls))
         update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
     except Exception as e:
-        print(e)
-        context.bot.send_message(chat_id=MASTER_ID,
-                                 text="Error: {} {} for message {}".format(str(type(e))[:1000],
-                                                                           str(e)[:2000],
-                                                                           str(update.message.text)[:1000]))
         update.message.reply_text(get_user_name(update) + ': ' + update.message.text[2:] + '\n' + str(rnd(20)))
+        raise e
+
+
+def custom_roll_wrapper(cnt, dice):
+    return lambda update, context: simple_roll(update, context, cnt, dice)
 
 
 def roll3d6(update, _):
@@ -93,7 +93,7 @@ def roll3d6(update, _):
                      + '\nSum: ' + str(sum(rolls)))
 
 
-def r2(update, _):
+def equation_roll(update, _):
     s, rolls, rest = roll_processing(update.message.text[2:], random_generator=rnd)
     r = calc(s)
     reply_to_message(update, get_user_name(update) + ': ' + rest + '\n' + s + '\n' +
@@ -135,10 +135,8 @@ def error_handler(update, context):
     print("Error: " + str(context.error))
     if update.message is not None:
         update.message.reply_text("Error")
-        context.bot.send_message(chat_id=MASTER_ID,
-                                 text="Error: {} {} for message {}".format(str(type(context.error))[:1000],
-                                                                           str(context.error)[:2000],
-                                                                           str(update.message.text)[:1000]))
+        context.bot.send_message(chat_id=MASTER_ID, text="Error: {} {} for message {}".format(
+            str(type(context.error))[:1000], str(context.error)[:2000], str(update.message.text)[:1000]))
 
 
 # start
@@ -155,9 +153,13 @@ def init(token):
     for command, func in (
             ('ping', ping),
             ('r', simple_roll),
-            ('3d6', roll3d6),
-            ('c', roll3d6),
-            ('d', r2),
+            ('3d6', custom_roll_wrapper(3, 6)),
+            ('c', custom_roll_wrapper(3, 6)),
+            ('s', custom_roll_wrapper(1, 11)),
+            ('p', custom_roll_wrapper(1, 100)),
+            ('p2', custom_roll_wrapper(1, 200)),
+            ('p3', custom_roll_wrapper(1, 300)),
+            ('d', equation_roll),
             ('stats', get_stats),
             ('statsall', get_full_stats),
     ):
