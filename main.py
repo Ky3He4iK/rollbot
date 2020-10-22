@@ -54,7 +54,7 @@ def simple_roll(update, _, cnt=1, dice=20):
                 break
 
         command = command.split('d')
-        rolls_cnt = to_int(command[0], default=cnt, max_v=1000)
+        rolls_cnt = to_int(command[0], default=1, max_v=1000) * cnt
         if len(command) > 1:
             rolls_dice = to_int(command[1], default=dice, max_v=1000000)
 
@@ -74,7 +74,11 @@ def simple_roll(update, _, cnt=1, dice=20):
                 comment = mod_act + mod + comment
         text = get_user_name(update) + ': ' + comment + '\n' + rolls_info
         if rolls_cnt > 1 and mod_act is None:
-            text += '\nSum: ' + str(sum(rolls))
+            text += '\nSum: '
+            if cnt != 1:
+                text += '(' + ' + '.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
+                        + ') = '
+            text += str(sum(rolls))
         update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
     except Exception as e:
         update.message.reply_text(get_user_name(update) + ': ' + update.message.text[2:] + '\n' + str(rnd(20)))
@@ -133,6 +137,14 @@ def get_full_stats(update, _):
     reply_to_message(update, msg)
 
 
+def help_handler(update, _):
+    reply_to_message(update, "Available commands:\n`/r 5d20+7`\\- roll 5d20 and add 7\\. Default dice is 1d20\n"
+                             "`/r d20` and `/r 5` and `/r +7` are fine too\nAlso can understand: `/c` \\- default 3d6\n"
+                             "`/s` \\- 1d11\n`/p` \\- 1d100\n`/p2` \\- 1d200\n`/p3` \\- 1d300\n\n"
+                             "And `/d *equation*` \\- evaluate \\*equation\\* with dice rolls in it",
+                     parse_mode="MarkdownV2")
+
+
 # log all errors
 def error_handler(update, context):
     logger.error('Error: {} ({} {}) caused.by {}'.format(context, type(context.error), context.error, update))
@@ -166,12 +178,14 @@ def init(token):
             ('d', equation_roll),
             ('stats', get_stats),
             ('statsall', get_full_stats),
+            ('help', help_handler)
     ):
         updater.dispatcher.add_handler(CommandHandler(command, func))
     updater.dispatcher.add_error_handler(error_handler)
 
     updater.start_polling()
     updater.idle()
+    print("Stopping")
 
     # saving stats
     f = open("stats.json", 'w')
