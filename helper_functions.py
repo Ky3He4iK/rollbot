@@ -2,7 +2,7 @@ ONLY_DIGITS = ''.join(str(i) for i in range(10))
 DICE_NOTATION = ONLY_DIGITS + 'dD%+-*/hHlL '
 
 
-def reply_to_message(update, text, parse_mode=None):
+def reply_to_message(update, text, is_markdown=False):
     while len(text) > 4095:
         last = text[:4096].rfind('\n')
         if last == -1:
@@ -11,7 +11,7 @@ def reply_to_message(update, text, parse_mode=None):
         else:
             update.message.reply_text(text[:last])
             text = text[last + 1:]
-    update.message.reply_text(text, parse_mode=parse_mode)
+    update.message.reply_text(text, parse_mode=("MarkdownV2" if is_markdown else None))
 
 
 def get_user_name(update):
