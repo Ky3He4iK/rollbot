@@ -140,10 +140,21 @@ def get_full_stats(update, _):
 
 
 def help_handler(update, _):
-    reply_to_message(update, "Available commands:\n`/r 5d20+7`\\- roll 5d20 and add 7\\. Default dice is 1d20\n"
-                             "`/r d20` and `/r 5` and `/r +7` are fine too\nAlso can understand: `/c` \\- default 3d6\n"
-                             "`/s` \\- 1d11\n`/p` \\- 1d100\n`/p2` \\- 1d200\n`/p3` \\- 1d300\n\n"
-                             "And `/d *equation*` \\- evaluate \\*equation\\* with dice rolls in it", is_markdown=True)
+    if update.message.from_user.language_code == "ru":
+        text = "Доступные команды:\n`/r 5d20+7`\\- рольнуть 5d20 и добавить 7\\. По умолчанию ролл 1d20\n" \
+               "`/r d20`, `/r 5` и `/r +7` тоже принимаются\nЕще принимает: `/c` \\- по умолчанию 3d6\n" \
+               "`/s` \\- 1d11\n`/p` \\- 1d100\n\n" \
+               "Ещё `/d *уравнение*` \\- вычислить \\*уравнение\\* с роллами дайсов\n\n" \
+               "Персональные команды: `/add` а потом комманда\\. Например: `/2d6_1 2d6+1`\n" \
+               "`/remove cmd` \\- удалить cmd из списка персональных команд\n`/list` \\- список персональных команд"
+    else:
+        text = "Available commands:\n`/r 5d20+7`\\- roll 5d20 and add 7\\. Default dice is 1d20\n" \
+               "`/r d20` and `/r 5` and `/r +7` are fine too\nAlso can understand: `/c` \\- default 3d6\n" \
+               "`/s` \\- 1d11\n`/p` \\- 1d100\n\n" \
+               "And `/d *equation*` \\- evaluate \\*equation\\* with dice rolls in it\n\n" \
+               "Custom commands: `/add` and then your command like you\\'d to see\\. For example: `/2d6_1 2d6+1`\n" \
+               "`/remove cmd` \\- delete cmd from your commands\n`/list` \\- list of your commands"
+    reply_to_message(update, text, is_markdown=True)
 
 
 def add_command_handler(update, _):
