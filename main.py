@@ -1,5 +1,4 @@
 import logging
-import random
 import time
 import json
 import os.path
@@ -83,7 +82,7 @@ def simple_roll(update, _, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
                 text += '(' + ' + '.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
                         + ') = '
             text += str(sum(rolls))
-        update.message.reply_text(text if len(text) < 3991 else (text[:3990] + "..."))
+        reply_to_message(update, text)
     except Exception as e:
         update.message.reply_text("{}: {}\n{}".format(get_user_name(update), update.message.text[3:],
                                                       ' + '.join(str(rnd(rolls_dice)) for _ in range(cnt))))
