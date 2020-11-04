@@ -21,13 +21,16 @@ MASTER_ID = 351693351
 
 
 # returns an integer from 1 to dice inclusively and add result to stats
-def rnd(dice):
-    dice = max(dice, -dice)  # remove negative values
+def rnd(dice: int) -> int:
+    dice = abs(dice)  # remove negative values
     if dice == 0 or dice > 1000000:
         dice = 20  # remove incorrect
-    res = random.randrange(dice) + 1
+    res = get_random_num(dice)
     if dice in stats:
-        stats[dice][res] = 1 + (stats[dice][res] if res in stats[dice] else 0)
+        if res in stats[dice]:
+            stats[dice][res] += 1
+        else:
+            stats[dice][res] = 1
     else:
         stats[dice] = {res: 1}
     return res
