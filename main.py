@@ -79,8 +79,8 @@ def simple_roll(update, _, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
         if rolls_cnt > 1 and mod_act is None:
             text += '\nSum: '
             if cnt != 1:
-                text += '(' + ' + '.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
-                        + ') = '
+                text += '((' + ') + ('.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
+                        + ')) = '
             text += str(sum(rolls))
         reply_to_message(update, text)
     except Exception as e:
@@ -148,14 +148,16 @@ def help_handler(update, _):
                "`/s` \\- 1d11\n`/p` \\- 1d100\n\n" \
                "Ещё `/d *уравнение*` \\- вычислить \\*уравнение\\* с роллами дайсов\n\n" \
                "Персональные команды: `/add` а потом комманда\\. Например: `/2d6_1 2d6+1`\n" \
-               "`/remove cmd` \\- удалить cmd из списка персональных команд\n`/list` \\- список персональных команд"
+               "`/remove cmd` \\- удалить cmd из списка персональных команд\n`/list` \\- список персональных команд\n" \
+               "\n/stats N \\- получить статистику для роллов дайса N\n/statsall \\- получить статистику всех бросков"
     else:
         text = "Available commands:\n`/r 5d20+7`\\- roll 5d20 and add 7\\. Default dice is 1d20\n" \
                "`/r d20` and `/r 5` and `/r +7` are fine too\nAlso can understand: `/c` \\- default 3d6\n" \
                "`/s` \\- 1d11\n`/p` \\- 1d100\n\n" \
                "And `/d *equation*` \\- evaluate \\*equation\\* with dice rolls in it\n\n" \
                "Custom commands: `/add` and then your command like you\\'d to see\\. For example: `/2d6_1 2d6+1`\n" \
-               "`/remove cmd` \\- delete cmd from your commands\n`/list` \\- list of your commands"
+               "`/remove cmd` \\- delete cmd from your commands\n`/list` \\- list of your commands\n\n" \
+               "/stats N \\- get statistic for dice N\n/statsall \\- get full statistic"
     reply_to_message(update, text, is_markdown=True)
 
 
@@ -201,6 +203,8 @@ def list_command_handlers(update, _):
 
 
 def all_commands_handler(update, context):
+    if update.message.text is None or len(update.message.text) == 0 or update.message.text[0] != '/':
+        return  # Not a command
     user_id = update.message.from_user.id
     if user_id in custom_rolls:
         cmd = update.message.text.split()[0][1:].replace(context.bot.name, '').lstrip('/')
