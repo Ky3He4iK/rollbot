@@ -1,20 +1,19 @@
 import logging
 import time
-import json
-import os.path
-
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram import Update
 
 import rollbot_secret_token
 from helper_functions import *
+from database import Database, Stat, CustomRoll, CountedRoll
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO, filename="rollbot.log")
 
 logger = logging.getLogger(__name__)
+db = Database()
 start_time = time.time()
-stats = {20: {i: 0 for i in range(1, 21)}}
-custom_rolls = {}
+pending_rolls = []
 global_commands = {}
 MASTER_ID = 351693351
 
@@ -25,41 +24,14 @@ def rnd(dice: int) -> int:
     if dice == 0 or dice > 1000000:
         dice = 20  # remove incorrect
     res = get_random_num(dice)
-    if dice in stats:
-        if res in stats[dice]:
-            stats[dice][res] += 1
-        else:
-            stats[dice][res] = 1
-    else:
-        stats[dice] = {res: 1}
+    db.increment_stat(dice, res)
     return res
 
 
 # params: update and context
-def simple_roll(update, _, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
-    # separating comment and roll params
-    ts = update.message.text.split(' ', 1)
-    rolls_cnt, comment = cnt, ''  # default values
-    if len(ts) > 1:  # not only `r`
-        # cut out comment
-        split_pos = sanity_bound(ts[1], DICE_NOTATION)
-        command, comment = ts[1][:split_pos].strip().lower(), ts[1][split_pos:].strip()
-
-        # cut out appendix (+6, *4, etc.)
-        for i in range(len(command)):
-            if command[i] in '+-*/':
-                mod_act = command[i]
-                if mod_act == '/':
-                    mod_act = '//'
-                command, mod_num = [s.strip() for s in command.split(command[i], 1)]
-                split_pos = sanity_bound(mod_num, ONLY_DIGITS)  # remove other actions
-                mod_num, comment = mod_num[:split_pos], mod_num[split_pos:] + comment
-                break
-
-        command = command.split('d')
-        rolls_cnt = to_int(command[0], default=1, max_v=1000) * cnt
-        if len(command) > 1:
-            rolls_dice = to_int(command[1], default=rolls_dice, max_v=1000000)
+def simple_roll(update: Update, _, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
+    parsed = parse_simple_roll(update.message.text, cnt, rolls_dice, mod_act, mod_num)
+    command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
 
     try:
         # get numbers and generate text
@@ -83,6 +55,7 @@ def simple_roll(update, _, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
                         + ')) = '
             text += str(sum(rolls))
         reply_to_message(update, text)
+        db.increment_counted_roll(update.message.chat_id, update.message.from_user.id, command_text)
     except Exception as e:
         update.message.reply_text("{}: {}\n{}".format(get_user_name(update), update.message.text[3:],
                                                       ' + '.join(str(rnd(rolls_dice)) for _ in range(cnt))))
@@ -106,6 +79,15 @@ def ping(update, _):
     print('ping!')
 
 
+def stats_to_dict():
+    stats = {}
+    for stat in db.get_all_stats():
+        if stat.dice not in stats:
+            stats[stat.dice] = {}
+        stats[stat.dice][stat.result] = stat.count
+    return stats
+
+
 # get stats only to d20
 def get_stats(update, _):
     ts = update.message.text.split(' ', 2)
@@ -113,13 +95,14 @@ def get_stats(update, _):
         dice = to_int(ts[1], default=20, max_v=1000000000)
     else:
         dice = 20
+    stats = stats_to_dict()
     if dice in stats:
         overall = sum(stats[dice].values())
         msg = "Stats for this bot:\nUptime: {} hours\nd20 stats (%): from {} rolls".format(
             (time.time() - start_time) / 3600, overall)
         for i in range(1, dice + 1):
             if i in stats[dice]:
-                msg += "\n{}: {}".format(i, stats[dice][i] / overall * 100)
+                msg += "\n{0}: {1:.3f}".format(i, stats[dice][i] / overall * 100)
     else:
         msg = "No information for this dice!"
     reply_to_message(update, msg)
@@ -128,12 +111,13 @@ def get_stats(update, _):
 # get all stats
 def get_full_stats(update, _):
     msg = "Stats for this bot:\nUptime: {} hours".format((time.time() - start_time) / 3600)
-    for key in stats:
-        overall = sum(stats[key].values())
-        msg += "\nd{} stats (%): from {} rolls".format(key, overall)
+    stats = stats_to_dict()
+    for key in sorted(stats.keys()):
+        stat_sum = sum(stats[key])
+        msg += "\nd{} stats (%): from {} rolls".format(key, stat_sum)
         for i in range(1, key + 1):
             if i in stats[key]:
-                addition = "\n{}: {}".format(i, stats[key][i] / overall * 100)
+                addition = "\n{0}: {1:.3f}".format(i, stats[key][i] / stat_sum * 100)
                 if len(msg) + len(addition) > 4000:
                     reply_to_message(update, msg)
                     msg = ''
@@ -163,10 +147,8 @@ def help_handler(update, _):
 
 def add_command_handler(update, _):
     user_id = update.message.from_user.id
-    if user_id in custom_rolls:
-        custom_rolls[user_id][""] = True
-    else:
-        custom_rolls[user_id] = {"": True}
+    if user_id not in pending_rolls:
+        pending_rolls.append(user_id)
     reply_to_message(update, "Ok, now send me command and what it will stands for\\. For example: `/2d6_1 2d6 + 1`",
                      is_markdown=True)
 
@@ -177,8 +159,9 @@ def remove_command_handler(update, context):
     if len(ts) == 2:
         cmd = ts[1].replace(context.bot.name, '').lstrip('/')
         if len(cmd) > 0:
-            if cmd in custom_rolls[user_id]:
-                del custom_rolls[user_id][cmd]
+            custom_roll = db.get_custom_roll(user_id, cmd)
+            if custom_roll is not None:
+                db.remove_custom_roll(custom_roll)
                 reply_to_message(update, "Deleted {} successfully\n!".format(cmd))
             else:
                 reply_to_message(update, "No command named {} found!".format(cmd))
@@ -187,17 +170,16 @@ def remove_command_handler(update, context):
 
 def list_command_handlers(update, _):
     user_id = update.message.from_user.id
-    if user_id not in custom_rolls:
+    custom_rolls = list(filter(lambda custom_roll: custom_roll.user_id == user_id, db.get_all_custom_rolls()))
+    if len(custom_rolls) == 0:
         reply_to_message(update, "You have no custom commands")
     else:
         msg = "Your commands:"
-        for cmd in custom_rolls[user_id]:
-            if len(cmd) > 0:
-                cmd_data = custom_rolls[user_id][cmd]
-                msg += "\n/{} - {}d{}".format(cmd, cmd_data["cnt"], cmd_data["rolls_dice"])
-                if "mod_act" in custom_rolls[user_id][cmd]:
-                    msg += cmd_data["mod_act"] + cmd_data["mod_num"]
-        if custom_rolls[user_id][""]:
+        for custom_roll in custom_rolls:
+            msg += "\n/{} - {}d{}".format(custom_roll.shortcut, custom_roll.count, custom_roll.dice)
+            if custom_roll.mod_act is not None:
+                msg += custom_roll.mod_act + custom_roll.mod_num
+        if user_id in pending_rolls:
             msg += "Pending custom command to add"
         reply_to_message(update, msg)
 
@@ -206,49 +188,37 @@ def all_commands_handler(update, context):
     if update.message.text is None or len(update.message.text) == 0 or update.message.text[0] != '/':
         return  # Not a command
     user_id = update.message.from_user.id
-    if user_id in custom_rolls:
-        cmd = update.message.text.split()[0][1:].replace(context.bot.name, '').lstrip('/')
-        if cmd in global_commands:
-            reply_to_message(update, "You cannot override global commands!")
-            return
-        if custom_rolls[user_id][""]:
-            ts = update.message.text.split(' ', 1)
-            if len(ts) > 1:  # not only `r`
-                # cut out comment
-                split_pos = sanity_bound(ts[1], DICE_NOTATION)
-                command = ts[1][:split_pos].strip().lower()
-
-                custom_rolls[user_id][""] = False
-                custom_rolls[user_id][cmd] = {"rolls_dice": 20}
-                # cut out appendix (+6, *4, etc.)
-                for i in range(len(command)):
-                    if command[i] in '+-*/':
-                        mod_act = command[i]
-                        if mod_act == '/':
-                            custom_rolls[user_id][cmd]["mod_act"] = '//'
-                        command, mod_num = [s.strip() for s in command.split(command[i], 1)]
-                        split_pos = sanity_bound(mod_num, ONLY_DIGITS)  # remove other actions
-                        custom_rolls[user_id][cmd]["mod_num"] = mod_num[:split_pos]
-                        break
-
-                command = command.split('d')
-                custom_rolls[user_id][cmd]["cnt"] = to_int(command[0], default=1, max_v=1000)
-                if len(command) > 1:
-                    custom_rolls[user_id][cmd]["rolls_dice"] = to_int(command[1], default=20, max_v=1000000)
-                cmd_data = custom_rolls[user_id][cmd]
-                msg = "Added command successfully!\n{} - {}d{}".format(cmd, cmd_data["cnt"], cmd_data["rolls_dice"])
-                if "mod_act" in custom_rolls[user_id][cmd]:
-                    msg += cmd_data["mod_act"] + cmd_data["mod_num"]
-                reply_to_message(update, msg)
-            else:
-                reply_to_message(update, "Need arguments for command\\. For example: `/2d6_1 2d6+1`", is_markdown=True)
+    cmd = update.message.text.split()[0][1:].replace(context.bot.name, '').lstrip('/')
+    roll = db.get_global_roll(cmd)
+    if roll is not None:
+        return simple_roll(update, context, roll.count, roll.dice, roll.mod_act, roll.mod_num)
+    if user_id in pending_rolls:
+        parsed = parse_simple_roll(update.message.text)
+        command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
+        if ' ' in command_text:
+            db.set_custom_roll(CustomRoll(user_id, cmd, rolls_cnt, rolls_dice, mod_act, mod_num))
+            pending_rolls.remove(user_id)
+            msg = "Added command successfully!\n{} - {}d{}".format(cmd, rolls_cnt, rolls_dice)
+            if mod_act is not None:
+                msg += mod_act + mod_num
+            reply_to_message(update, msg)
         else:
-            if len(cmd) > 0 and cmd in custom_rolls[user_id]:
-                simple_roll(update, context, **custom_rolls[user_id][cmd])
+            reply_to_message(update, "Need arguments for command\\. For example: `/2d6_1 2d6+1`", is_markdown=True)
+    else:
+        custom_roll = db.get_custom_roll(user_id, cmd)
+        if custom_roll is not None:
+            simple_roll(update, context, custom_roll.count, custom_roll.dice,
+                        custom_roll.mod_act, custom_roll.mod_num)
+
+
+def db_commit(update, _):
+    if update.message.from_user.id == MASTER_ID:
+        db.commit()
+        update.message.reply_text("OK")
 
 
 # log all errors
-def error_handler(update, context):
+def error_handler(update: Update, context: CallbackContext):
     logger.error('Error: {} ({} {}) caused.by {}'.format(context, type(context.error), context.error, update))
     print("Error: " + str(context.error))
     if update.message is not None:
@@ -260,14 +230,7 @@ def error_handler(update, context):
 # start
 def init(token):
     # stats loading
-    global stats, custom_rolls, global_commands
-    if os.path.isfile("stats.json"):
-        # convert dict's keys from str to int
-        stats_t = json.loads(open("stats.json").read())
-        stats = {int(dice): {int(res): stats_t[dice][res] for res in stats_t[dice]} for dice in stats_t}
-    if os.path.isfile("custom_rolls.json"):
-        custom_rolls_t = json.loads(open("custom_rolls.json").read())
-        custom_rolls = {int(user_id): custom_rolls_t[user_id] for user_id in custom_rolls_t}
+    global global_commands
 
     global_commands = {
         'ping': ping,
@@ -283,24 +246,20 @@ def init(token):
         'add': add_command_handler,
         'remove': remove_command_handler,
         'list': list_command_handlers,
+        'commit': db_commit,
     }
 
     updater = Updater(token=token, use_context=True)
     # adding handlers
-    for command in global_commands:
-        updater.dispatcher.add_handler(CommandHandler(command, global_commands[command]))
+    for command, func in global_commands.items():
+        updater.dispatcher.add_handler(CommandHandler(command, func))
     updater.dispatcher.add_handler(MessageHandler(Filters.text, all_commands_handler))
     updater.dispatcher.add_error_handler(error_handler)
 
     updater.start_polling()
     updater.idle()
     print("Stopping")
-
-    # saving stats
-    with open("stats.json", 'w') as f:
-        f.write(json.dumps(stats))
-    with open("custom_rolls.json", 'w') as f:
-        f.write(json.dumps(custom_rolls))
+    db.close()
 
 
 if __name__ == '__main__':

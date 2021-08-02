@@ -5,6 +5,11 @@ ONLY_DIGITS = ''.join(str(i) for i in range(10))
 DICE_NOTATION = ONLY_DIGITS + 'dD%+-*/hHlL '
 
 
+# get creator of chat with chat_id
+def get_creator_id(context, chat_id):
+    return list(filter(lambda a: a.status == a.CREATOR, context.bot.getChatAdministrators(chat_id)))[0].user.id
+
+
 # get number in [1, max_val] using "true" random
 def get_random_num(max_val: int) -> int:
     bin_len = len(bin(max_val)) - 2
@@ -149,3 +154,32 @@ def calc(expression):
         return int(expr_list[0]), ""
     except ZeroDivisionError:
         return None, "Division by zero"
+
+
+# return: [command_text, comment, count, dice, mod_act, mod_num]
+def parse_simple_roll(text, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
+    # separating comment and roll params
+    ts = text.split(' ', 1)
+    rolls_cnt, comment = cnt, ''
+    command_text = ts[0]
+    if len(ts) > 1:  # not only `r`
+        # cut out comment
+        split_pos = sanity_bound(ts[1], DICE_NOTATION)
+        command, comment = ts[1][:split_pos].strip().lower(), ts[1][split_pos:].strip()
+        command_text += ' ' + command
+        # cut out appendix (+6, *4, etc.)
+        for i in range(len(command)):
+            if command[i] in '+-*/':
+                mod_act = command[i]
+                if mod_act == '/':
+                    mod_act = '//'
+                command, mod_num = [s.strip() for s in command.split(command[i], 1)]
+                split_pos = sanity_bound(mod_num, ONLY_DIGITS)  # remove other actions
+                mod_num, comment = mod_num[:split_pos], mod_num[split_pos:] + comment
+                break
+
+        command = command.split('d')
+        rolls_cnt = to_int(command[0], default=1, max_v=1000) * cnt
+        if len(command) > 1:
+            rolls_dice = to_int(command[1], default=None, max_v=1000000)
+    return [command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num]
