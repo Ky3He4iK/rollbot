@@ -6,7 +6,7 @@ DICE_NOTATION = ONLY_DIGITS + 'dD%+-*/hHlL '
 
 
 # get creator of chat with chat_id
-def get_creator_id(context, chat_id):
+def get_chat_creator_id(context, chat_id):
     return list(filter(lambda a: a.status == a.CREATOR, context.bot.getChatAdministrators(chat_id)))[0].user.id
 
 

@@ -28,8 +28,8 @@ class GlobalRoll:
     shortcut: str
     count: int
     dice: int
-    mod_act: Optional[str]
-    mod_num: Optional[str]
+    mod_act: Optional[str] = None
+    mod_num: Optional[str] = None
 
 
 @dataclass
@@ -81,7 +81,7 @@ class Database:
     }
 
     def __init__(self):
-        self._base = sqlite3.connect("rollbot.db")
+        self._base = sqlite3.connect("rollbot.db", check_same_thread=False)
         self._base.isolation_level = None
 
     def close(self):
@@ -374,8 +374,12 @@ class Database:
             return str(val).replace("'", "''")
 
 
-if __name__ == '__main__':
+def import_data():
     db = Database()
+    with open('create_db.sql') as file:
+        queries = file.read().split(';\n\n')
+        for query in queries:
+            db._execute(query)
     if os.path.isfile("stats.json"):
         # convert dict's keys from str to int
         stats_t = json.loads(open("stats.json").read())
@@ -394,3 +398,7 @@ if __name__ == '__main__':
                 db.set_custom_roll(CustomRoll(user_id, roll, roll_data["cnt"], roll_data["rolls_dice"],
                                               get_field(roll_data, "mod_act"), get_field(roll_data, "mod_num")))
     db.close()
+
+
+if __name__ == '__main__':
+    import_data()
