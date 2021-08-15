@@ -126,7 +126,7 @@ class Rollbot(Helper):
         rolls = self.db.get_all_global_rolls()
         msg = self.ss.GLOBAL_COMMANDS(update)
         for roll in rolls:
-            msg += "\n/{} - {}d{}".format(roll.shortcut, roll.count, roll.dice)
+            msg += "\n{} - {}d{}".format(roll.shortcut, roll.count, roll.dice)
             if roll.mod_act is not None:
                 msg += roll.mod_act + roll.mod_num
         self.reply_to_message(update, msg)
@@ -146,6 +146,7 @@ class Rollbot(Helper):
 
     def reset_command_usage(self, update, context):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
+        creator_id = self.get_chat_creator_id(context, chat_id)
         if has_access:
             cmds = update.message.text.split(' ')
             if len(cmds) == 1:
@@ -156,11 +157,16 @@ class Rollbot(Helper):
                 return self.reply_to_message(update, self.ss.NOTHING_RESET(update))
             count = roll.count
             if len(cmds) > 2:
-                roll.count = self.to_int(cmds[2], default=0, max_v=1000_000_000)
+                if creator_id == update.message.from_user.id:
+                    roll.count = self.to_int(cmds[2], default=0, max_v=1000_000_000)
+                    msg = self.ss.SET_NEW_VALUE(update).format(roll.count, count)
+                else:
+                    msg = self.ss.ACCESS_DENIED
             else:
                 roll.count = 0
+                msg = self.ss.RESET_OLD_VALUE(update) + str(count)
             self.db.set_counted_roll(roll)
-            self.reply_to_message(update, self.ss.RESET_OLD_VALUE(update) + str(count))
+            self.reply_to_message(update, msg)
 
     # get stats only to d20
     def get_stats(self, update, _):

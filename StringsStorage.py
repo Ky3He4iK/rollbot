@@ -26,6 +26,7 @@ class StringsStorage:
     TIMES = String("раз", "times")
     NOTHING_RESET = String("Нечего сбрасывать", "Nothing to reset")
     RESET_OLD_VALUE = String("Сброшено. Старое значение: ", "Reset. Old value: ")
+    SET_NEW_VALUE = String("Установлено новое значение. Теперь {} вместо {}", "Set a new value. Now {} instead of {}")
     NO_DICE_STATS = String("Нет информации для этой кости", "No information for this dice!")
     STATS_UPTIME = String("Статистика этого бота:\nРаботает: {:.2f} часов", "Stats for this bot:\nUptime: {} hours")
     STATS_DICE = String("\nСтатистика для d{} (%): из {} бросков", "\nd{} stats (%): from {} rolls")
@@ -61,7 +62,7 @@ class StringsStorage:
 /statsall - получить статистику всех бросков
 /get (в ответ на чье-нибудь сообщение) - узнать, сколько раз человек кидал какие роллы в этом чате
 /reset /c (в ответ на чье-нибудь сообщение) - сбросить статистику человека для комманды /c
-Если надо установить определенное значение статистики, то указать после комманды, например /reset /c 42
+Если надо установить определенное значение статистики, то указать после комманды, например /reset /c 42 (только для создателя чата)
 Чужую статистику смотреть и сбрасывать можно только создателю чата (и создателю бота, по блату)
 """, """
 /r - Throw dices. You can specify dice count and number of faces of each dice, for example /r 3d6 - cube for statistics check. You can also specify throw modifier, for example /r +3
@@ -86,7 +87,7 @@ The bot also collects statistics:
 /statsall - get statistics of all throws
 /get (in response to someone's message) - find out how many times a person has thrown which rolls in this chat
 /reset /c (in response to someone's message) - reset the person's statistics for the /c command
-If you need to set a specific value of statistics, then specify after the command, for example /reset /c 42 
+If you need to set a specific value of statistics, then specify after the command, for example /reset /c 42 (chat creator only) 
 Someone else's statistics can only be viewed and reset by the creator of the chat""")
     HELP_MASTER = String("""
 \n/add_globall /roll 1d20 - добавить новую глобальную комманду
