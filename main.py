@@ -1,19 +1,19 @@
 import logging
 import time
+import os
+
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from telegram import Update
 
 import rollbot_secret_token
-from helper_functions import *
+from helper_functions import Helper
 from database import CustomRoll, GlobalRoll
-
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    level=logging.INFO, filename="data/rollbot.log")
-logger = logging.getLogger(__name__)
 
 
 class Rollbot(Helper):
     def __init__(self):
+        logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                            level=logging.INFO, filename="data/rollbot.log")
         super().__init__()
         self.start_time = time.time()
         self.pending_rolls = []
@@ -269,7 +269,7 @@ class Rollbot(Helper):
 
     # log all errors
     def error_handler(self, update: Update, context: CallbackContext):
-        logger.error('Error: {} ({} {}) caused.by {}'.format(context, type(context.error), context.error, update))
+        logging.error('Error: {} ({} {}) caused.by {}'.format(context, type(context.error), context.error, update))
         print("Error: " + str(context.error))
         if update is not None and update.message is not None:
             update.message.reply_text("Error")
