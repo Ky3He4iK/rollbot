@@ -157,16 +157,23 @@ def calc(expression):
 
 
 # return: [command_text, comment, count, dice, mod_act, mod_num]
-def parse_simple_roll(text, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
+def parse_simple_roll(text, default_count=1, default_dice=20, default_mod_act=None, default_mod_num=None,
+                      botname='@dice_cheating_bot'):
+    def eq(a, b) -> bool:
+        if b is None:
+            return a is None
+        return a == b
+
     # separating comment and roll params
     ts = text.split(' ', 1)
-    rolls_cnt, comment = cnt, ''
-    command_text = ts[0]
+    comment = ''
+    rolls_dice, rolls_cnt = default_dice, default_count
+    mod_act, mod_num = default_mod_act, default_mod_num
+    command_shortcut = ts[0].replace(botname, '')
     if len(ts) > 1:  # not only `r`
         # cut out comment
         split_pos = sanity_bound(ts[1], DICE_NOTATION)
         command, comment = ts[1][:split_pos].strip().lower(), ts[1][split_pos:].strip()
-        command_text += ' ' + command
         # cut out appendix (+6, *4, etc.)
         for i in range(len(command)):
             if command[i] in '+-*/':
@@ -177,9 +184,29 @@ def parse_simple_roll(text, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
                 split_pos = sanity_bound(mod_num, ONLY_DIGITS)  # remove other actions
                 mod_num, comment = mod_num[:split_pos], mod_num[split_pos:] + comment
                 break
-
         command = command.split('d')
-        rolls_cnt = to_int(command[0], default=1, max_v=1000) * cnt
+        rolls_cnt = to_int(command[0], default=1, max_v=1000) * default_count
         if len(command) > 1:
             rolls_dice = to_int(command[1], default=None, max_v=1000000)
+    if rolls_dice == default_dice and rolls_cnt == default_count and eq(mod_act, default_mod_act) and \
+            eq(mod_num, default_mod_num):
+        command_text = command_shortcut
+    else:
+        command_text = command_shortcut + "{}d{}".format(rolls_cnt, rolls_dice)
+        if mod_act is not None:
+            command_text += mod_act + mod_num
     return [command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num]
+
+
+def is_user_has_stats_access(update, context, MASTER_ID) -> (bool, int, int):
+    # has_access, chat_id, user_id
+    chat_id, user_id = update.message.chat_id, update.message.from_user.id
+    is_admin = user_id == MASTER_ID or (chat_id != user_id and get_chat_creator_id(context, chat_id) == user_id)
+    if update.message.reply_to_message is not None:
+        target_id = update.message.reply_to_message.from_user.id
+    else:
+        target_id = user_id
+    if not is_admin and user_id != target_id:
+        reply_to_message(update, "Только создатель чата имеет доступ")
+        return False, chat_id, target_id
+    return True, chat_id, target_id

@@ -29,8 +29,8 @@ def rnd(dice: int) -> int:
 
 
 # params: update and context
-def simple_roll(update: Update, _, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
-    parsed = parse_simple_roll(update.message.text, cnt, rolls_dice, mod_act, mod_num)
+def simple_roll(update: Update, context, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
+    parsed = parse_simple_roll(update.message.text, cnt, rolls_dice, mod_act, mod_num, botname=context.bot.name)
     command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
 
     try:
@@ -51,7 +51,8 @@ def simple_roll(update: Update, _, cnt=1, rolls_dice=20, mod_act=None, mod_num=N
         if rolls_cnt > 1 and mod_act is None:
             text += '\nSum: '
             if cnt != 1:
-                text += '(' + ') + ('.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
+                text += '(' \
+                        + ') + ('.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
                         + ') = '
             text += str(sum(rolls))
         reply_to_message(update, text)
@@ -79,14 +80,17 @@ def ping(update, _):
     print('ping!')
 
 
-def add_global_command(update, _):
+def add_global_command(update, context):
     if update.message.from_user.id == MASTER_ID:
         if update.message.text.count(' ') != 2:
             reply_to_message(update, "Usage: /add_global /roll 1d20")
             return
         _, shortcut, roll = update.message.text.split()
-        parsed = parse_simple_roll(shortcut + ' ' + roll)
+        parsed = parse_simple_roll(shortcut + ' ' + roll, botname=context.bot.name)
         command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
+        roll = db.get_global_roll(shortcut)
+        if roll is not None:
+            reply_to_message(update, "Already has this command!")
         db.set_global_roll(GlobalRoll(shortcut, rolls_cnt, rolls_dice, mod_act, mod_num))
         msg = "Added command successfully!\n{} - {}d{}".format(shortcut, rolls_cnt, rolls_dice)
         if mod_act is not None:
@@ -123,19 +127,32 @@ def get_global_commands(update, _):
 
 
 def get_command_usage(update, context):
-    chat_id, user_id = update.message.chat_id, update.message.from_user.id
-    if user_id == MASTER_ID or (chat_id != user_id and get_chat_creator_id(context, chat_id) == user_id):
-        pass  # todo
-    else:
-        reply_to_message(update, "Только создатель чата имеет доступ")
+    has_access, chat_id, target_id = is_user_has_stats_access(update, context, MASTER_ID)
+    if has_access:
+        rolls = list(filter(lambda r: r.chat_id == chat_id and r.user_id == target_id, db.get_all_counted_rolls()))
+        if len(rolls) == 0:
+            reply_to_message(update, "Нет статистики для этого пользователя")
+        else:
+            msg = "Статистика:"
+            for roll in rolls:
+                msg += "\n{} - {} раз".format(roll.command, roll.count)
+                reply_to_message(update, msg)
 
 
 def reset_command_usage(update, context):
-    chat_id, user_id = update.message.chat_id, update.message.from_user.id
-    if user_id == MASTER_ID or (chat_id != user_id and get_chat_creator_id(context, chat_id) == user_id):
-        pass  # todo
-    else:
-        reply_to_message(update, "Только создатель чата имеет доступ")
+    has_access, chat_id, target_id = is_user_has_stats_access(update, context, MASTER_ID)
+    if has_access:
+        cmds = update.message.text.split(' ', 1)
+        if len(cmds) == 1:
+            return reply_to_message(update, "Usage: /reset cmd")
+        cmd = cmds[1]
+        roll = db.get_counted_roll(chat_id, target_id, cmd)
+        if roll is None:
+            return reply_to_message(update, "Нечего сбрасывать")
+        count = roll.count
+        roll.count = 0
+        db.set_counted_roll(roll)
+        reply_to_message(update, "Сброшено. Старое значение: " + str(count))
 
 
 def stats_to_dict():
@@ -234,7 +251,7 @@ def remove_command_handler(update, context):
 
 def list_command_handlers(update, _):
     user_id = update.message.from_user.id
-    custom_rolls = list(filter(lambda custom_roll: custom_roll.user_id == user_id, db.get_all_custom_rolls()))
+    custom_rolls = list(filter(lambda c_roll: c_roll.user_id == user_id, db.get_all_custom_rolls()))
     if len(custom_rolls) == 0:
         reply_to_message(update, "You have no custom commands")
     else:
@@ -257,7 +274,7 @@ def all_commands_handler(update, context):
     if roll is not None:
         return simple_roll(update, context, roll.count, roll.dice, roll.mod_act, roll.mod_num)
     if user_id in pending_rolls:
-        parsed = parse_simple_roll(update.message.text)
+        parsed = parse_simple_roll(update.message.text, botname=context.bot.name)
         command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
         if ' ' in command_text:
             db.set_custom_roll(CustomRoll(user_id, cmd, rolls_cnt, rolls_dice, mod_act, mod_num))
@@ -285,7 +302,7 @@ def db_commit(update, _):
 def error_handler(update: Update, context: CallbackContext):
     logger.error('Error: {} ({} {}) caused.by {}'.format(context, type(context.error), context.error, update))
     print("Error: " + str(context.error))
-    if update.message is not None:
+    if update is not None and update.message is not None:
         update.message.reply_text("Error")
         context.bot.send_message(chat_id=MASTER_ID, text="Error: {} {} for message {}".format(
             str(type(context.error))[:1000], str(context.error)[:2000], str(update.message.text)[:1000]))
@@ -299,16 +316,7 @@ def init(token):
     global_commands = {
         'ping': ping,
         'r': simple_roll,
-        '3d6': custom_roll_wrapper(3, 6),
         'c': custom_roll_wrapper(3, 6),
-        'c1': custom_roll_wrapper(3, 6),
-        'c2': custom_roll_wrapper(3, 6),
-        'c3': custom_roll_wrapper(3, 6),
-        'c4': custom_roll_wrapper(3, 6),
-        'c5': custom_roll_wrapper(3, 6),
-        'c6': custom_roll_wrapper(3, 6),
-        's': custom_roll_wrapper(1, 11),
-        'p': custom_roll_wrapper(1, 100),
         'd': equation_roll,
         'stats': get_stats,
         'statsall': get_full_stats,
@@ -320,6 +328,8 @@ def init(token):
         'add_global': add_global_command,
         'remove_global': remove_global_command,
         'get_globals': get_global_commands,
+        'get': get_command_usage,
+        'reset': reset_command_usage
     }
 
     updater = Updater(token=token, use_context=True)
