@@ -133,7 +133,7 @@ class Rollbot(Helper):
         self.reply_to_message(update, msg)
 
     def get_command_usage(self, update, context):
-        has_access, chat_id, target_id = self.is_user_has_stats_access(update, context, self.MASTER_ID)
+        has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
             rolls = list(filter(lambda r: r.chat_id == chat_id and r.user_id == target_id,
                                 self.db.get_all_counted_rolls()))
@@ -146,7 +146,7 @@ class Rollbot(Helper):
                     self.reply_to_message(update, msg)
 
     def reset_command_usage(self, update, context):
-        has_access, chat_id, target_id = self.is_user_has_stats_access(update, context, self.MASTER_ID)
+        has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
             cmds = update.message.text.split(' ', 1)
             if len(cmds) == 1:
