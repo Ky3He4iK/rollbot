@@ -147,7 +147,7 @@ class Rollbot(Helper):
     def reset_command_usage(self, update, context):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
-            cmds = update.message.text.split(' ', 1)
+            cmds = update.message.text.split(' ')
             if len(cmds) == 1:
                 return self.reply_to_message(update, self.ss.USAGE(update) + "/reset cmd")
             cmd = cmds[1]
@@ -155,7 +155,10 @@ class Rollbot(Helper):
             if roll is None:
                 return self.reply_to_message(update, self.ss.NOTHING_RESET(update))
             count = roll.count
-            roll.count = 0
+            if len(cmds) > 2:
+                roll.count = self.to_int(cmds[2], default=0, max_v=1000_000_000)
+            else:
+                roll.count = 0
             self.db.set_counted_roll(roll)
             self.reply_to_message(update, self.ss.RESET_OLD_VALUE(update) + str(count))
 

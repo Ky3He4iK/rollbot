@@ -61,6 +61,7 @@ class StringsStorage:
 /statsall - получить статистику всех бросков
 /get (в ответ на чье-нибудь сообщение) - узнать, сколько раз человек кидал какие роллы в этом чате
 /reset /c (в ответ на чье-нибудь сообщение) - сбросить статистику человека для комманды /c
+Если надо установить определенное значение статистики, то указать после комманды, например /reset /c 42
 Чужую статистику смотреть и сбрасывать можно только создателю чата (и создателю бота, по блату)
 """, """
 /r - Throw dices. You can specify dice count and number of faces of each dice, for example /r 3d6 - cube for statistics check. You can also specify throw modifier, for example /r +3
@@ -85,6 +86,7 @@ The bot also collects statistics:
 /statsall - get statistics of all throws
 /get (in response to someone's message) - find out how many times a person has thrown which rolls in this chat
 /reset /c (in response to someone's message) - reset the person's statistics for the /c command
+If you need to set a specific value of statistics, then specify after the command, for example /reset /c 42 
 Someone else's statistics can only be viewed and reset by the creator of the chat""")
     HELP_MASTER = String("""
 \n/add_globall /roll 1d20 - добавить новую глобальную комманду
