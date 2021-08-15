@@ -92,40 +92,39 @@ class Rollbot(Helper):
     def add_global_command(self, update, context):
         if update.message.from_user.id == self.MASTER_ID:
             if update.message.text.count(' ') != 2:
-                self.reply_to_message(update, "Usage: /add_global /roll 1d20")
-                return
+                return self.reply_to_message(update, self.ss.USAGE(update) + "/add_global /roll 1d20")
             _, shortcut, roll = update.message.text.split()
             parsed = self.parse_simple_roll(shortcut + ' ' + roll, botname=context.bot.name)
             command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
             roll = self.db.get_global_roll(shortcut)
             if roll is not None:
-                self.reply_to_message(update, "Already has this command!")
+                self.reply_to_message(update, self.ss.ALREADY_HAS_COMMAND(update))
             self.db.set_global_roll(GlobalRoll(shortcut, rolls_cnt, rolls_dice, mod_act, mod_num))
-            msg = "Added command successfully!\n{} - {}d{}".format(shortcut, rolls_cnt, rolls_dice)
+            msg = self.ss.COMMAND_ADDED_SUCCESSFULLY(update) + "\n{} - {}d{}".format(shortcut, rolls_cnt, rolls_dice)
             if mod_act is not None:
                 msg += mod_act + mod_num
             self.reply_to_message(update, msg)
         else:
-            self.reply_to_message(update, "Access denied")
+            self.reply_to_message(update, self.ss.ACCESS_DENIED(update))
 
     def remove_global_command(self, update, _):
         if update.message.from_user.id == self.MASTER_ID:
             if update.message.text.count(' ') != 1:
-                self.reply_to_message(update, "Usage: /remove_global /roll")
+                self.reply_to_message(update, self.ss.USAGE(update) + "/remove_global /roll")
                 return
             shortcut = update.message.text.split()[1]
             res = self.db.remove_global_roll(GlobalRoll(shortcut, 1, 20))
             if res > 0:
-                msg = "Removed successfully!"
+                msg = self.ss.COMMAND_REMOVED_SUCCESSFULLY(update)
             else:
-                msg = "Unknown command"
+                msg = self.ss.UNKNOWN_COMMAND(update)
             self.reply_to_message(update, msg)
         else:
-            self.reply_to_message(update, "Access denied")
+            self.reply_to_message(update, self.ss.ACCESS_DENIED(update))
 
     def get_global_commands(self, update, _):
         rolls = self.db.get_all_global_rolls()
-        msg = "Global rolls:"
+        msg = self.ss.GLOBAL_COMMANDS(update)
         for roll in rolls:
             msg += "\n/{} - {}d{}".format(roll.shortcut, roll.count, roll.dice)
             if roll.mod_act is not None:
@@ -138,11 +137,11 @@ class Rollbot(Helper):
             rolls = list(filter(lambda r: r.chat_id == chat_id and r.user_id == target_id,
                                 self.db.get_all_counted_rolls()))
             if len(rolls) == 0:
-                self.reply_to_message(update, "Нет статистики для этого пользователя")
+                self.reply_to_message(update, self.ss.NO_USER_STATS(update))
             else:
-                msg = "Статистика:"
+                msg = self.ss.STATS(update)
                 for roll in rolls:
-                    msg += "\n{} - {} раз".format(roll.command, roll.count)
+                    msg += "\n{} - {} ".format(roll.command, roll.count) + self.ss.TIMES(update)
                     self.reply_to_message(update, msg)
 
     def reset_command_usage(self, update, context):
@@ -150,15 +149,15 @@ class Rollbot(Helper):
         if has_access:
             cmds = update.message.text.split(' ', 1)
             if len(cmds) == 1:
-                return self.reply_to_message(update, "Usage: /reset cmd")
+                return self.reply_to_message(update, self.ss.USAGE(update) + "/reset cmd")
             cmd = cmds[1]
             roll = self.db.get_counted_roll(chat_id, target_id, cmd)
             if roll is None:
-                return self.reply_to_message(update, "Нечего сбрасывать")
+                return self.reply_to_message(update, self.ss.NOTHING_RESET(update))
             count = roll.count
             roll.count = 0
             self.db.set_counted_roll(roll)
-            self.reply_to_message(update, "Сброшено. Старое значение: " + str(count))
+            self.reply_to_message(update, self.ss.RESET_OLD_VALUE(update) + str(count))
 
     # get stats only to d20
     def get_stats(self, update, _):
@@ -170,25 +169,25 @@ class Rollbot(Helper):
         stats = self.stats_to_dict()
         if dice in stats:
             overall = sum(stats[dice].values())
-            msg = "Stats for this bot:\nUptime: {} hours\nd20 stats (%): from {} rolls".format(
-                (time.time() - self.start_time) / 3600, overall)
+            msg = self.ss.STATS_UPTIME(update).format(
+                (time.time() - self.start_time) / 3600) + self.ss.STATS_DICE(update).format(dice, overall)
             for i in range(1, dice + 1):
                 if i in stats[dice]:
                     msg += "\n{0}: {1:.3f}".format(i, stats[dice][i] / overall * 100)
         else:
-            msg = "No information for this dice!"
+            msg = self.ss.NO_DICE_STATS(update)
         self.reply_to_message(update, msg)
 
     # get all stats
     def get_full_stats(self, update, _):
-        msg = "Stats for this bot:\nUptime: {} hours".format((time.time() - self.start_time) / 3600)
+        msg = self.ss.STATS_UPTIME(update).format((time.time() - self.start_time) / 3600)
         stats = self.stats_to_dict()
         for key in sorted(stats.keys()):
             stat_sum = sum(stats[key])
-            msg += "\nd{} stats (%): from {} rolls".format(key, stat_sum)
+            msg += self.ss.STATS_DICE(update).format(key, stat_sum)
             for i in range(1, key + 1):
                 if i in stats[key]:
-                    addition = "\n{0}: {1:.3f}".format(i, stats[key][i] / stat_sum * 100)
+                    addition = "\n{}: {:.3f}".format(i, stats[key][i] / stat_sum * 100)
                     if len(msg) + len(addition) > 4000:
                         self.reply_to_message(update, msg)
                         msg = ''
@@ -196,34 +195,16 @@ class Rollbot(Helper):
         self.reply_to_message(update, msg)
 
     def help_handler(self, update, _):
-        if update.message.from_user.language_code == "ru":
-            text = "Доступные команды:\n`/r 5d20+7`\\- рольнуть 5d20 и добавить 7\\. По умолчанию ролл 1d20\n" \
-                   "`/r d20`, `/r 5` и `/r +7` тоже принимаются\nЕще принимает: `/c` \\- по умолчанию 3d6\n" \
-                   "`/s` \\- 1d11\n`/p` \\- 1d100\n\n" \
-                   "Ещё `/d *уравнение*` \\- вычислить \\*уравнение\\* с роллами дайсов\n\n" \
-                   "Персональные команды: `/add` а потом комманда\\. Например: `/2d6_1 2d6+1`\n" \
-                   "`/remove cmd` \\- удалить cmd из списка персональных команд\n`/list` \\- список персональных команд\n" \
-                   "\n/stats N \\- получить статистику для роллов дайса N\n/statsall \\- получить статистику всех бросков" \
-                   "`/get_globals` \\- get all global rolls"
-        else:
-            text = "Available commands:\n`/r 5d20+7`\\- roll 5d20 and add 7\\. Default dice is 1d20\n" \
-                   "`/r d20` and `/r 5` and `/r +7` are fine too\nAlso can understand: `/c` \\- default 3d6\n" \
-                   "`/s` \\- 1d11\n`/p` \\- 1d100\n\n" \
-                   "And `/d *equation*` \\- evaluate \\*equation\\* with dice rolls in it\n\n" \
-                   "Custom commands: `/add` and then your command like you\\'d to see\\. For example: `/2d6_1 2d6+1`\n" \
-                   "`/remove cmd` \\- delete cmd from your commands\n`/list` \\- list of your commands\n\n" \
-                   "/stats N \\- get statistic for dice N\n/statsall \\- get full statistic\n" \
-                   "`/get_globals` \\- get all global rolls"
+        text = self.ss.HELP_MESSAGE(update)
         if update.message.from_user.id == self.MASTER_ID:
-            text += "\n\n`/add_global /roll 1d20` \\- add new global roll\n`/remove_global /roll` \\- remove global roll\n"
-        self.reply_to_message(update, text, is_markdown=True)
+            text += self.ss.HELP_MASTER(update)
+        self.reply_to_message(update, text)
 
     def add_command_handler(self, update, _):
         user_id = update.message.from_user.id
         if user_id not in self.pending_rolls:
             self.pending_rolls.append(user_id)
-        self.reply_to_message(update, "Ok, now send me command and what it will stands for\\. For example: `/2d6_1 2d6 + 1`",
-                              is_markdown=True)
+        self.reply_to_message(update, self.ss.ADD_COMMAND(update), is_markdown=True)
 
     def remove_command_handler(self, update, context):
         user_id = update.message.from_user.id
@@ -234,25 +215,25 @@ class Rollbot(Helper):
                 custom_roll = self.db.get_custom_roll(user_id, cmd)
                 if custom_roll is not None:
                     self.db.remove_custom_roll(custom_roll)
-                    self.reply_to_message(update, "Deleted {} successfully!".format(cmd))
+                    self.reply_to_message(update, self.ss.DELETED_COMMAND(update).format(cmd))
                 else:
-                    self.reply_to_message(update, "No command named {} found!".format(cmd))
+                    self.reply_to_message(update, self.ss.UNKNOWN_COMMAND(update))
         else:
-            self.reply_to_message(update, "Usage: `/remove your_cmd`", is_markdown=True)
+            self.reply_to_message(update, self.ss.USAGE(update) + "`/remove your_cmd`", is_markdown=True)
 
     def list_command_handlers(self, update, _):
         user_id = update.message.from_user.id
         custom_rolls = list(filter(lambda c_roll: c_roll.user_id == user_id, self.db.get_all_custom_rolls()))
         if len(custom_rolls) == 0:
-            self.reply_to_message(update, "You have no custom commands")
+            self.reply_to_message(update, self.ss.NO_CUSTOM(update))
         else:
-            msg = "Your commands:"
+            msg = self.ss.YOUR_COMMANDS(update)
             for custom_roll in custom_rolls:
                 msg += "\n/{} - {}d{}".format(custom_roll.shortcut, custom_roll.count, custom_roll.dice)
                 if custom_roll.mod_act is not None:
                     msg += custom_roll.mod_act + custom_roll.mod_num
             if user_id in self.pending_rolls:
-                msg += "Pending custom command to add"
+                msg += self.ss.CUSTOM_PENDING(update)
             self.reply_to_message(update, msg)
 
     def all_commands_handler(self, update, context):
@@ -269,13 +250,12 @@ class Rollbot(Helper):
             if ' ' in command_text:
                 self.db.set_custom_roll(CustomRoll(user_id, cmd, rolls_cnt, rolls_dice, mod_act, mod_num))
                 self.pending_rolls.remove(user_id)
-                msg = "Added command successfully!\n{} - {}d{}".format(cmd, rolls_cnt, rolls_dice)
+                msg = self.ss.COMMAND_ADDED_SUCCESSFULLY(update) + "\n{} - {}d{}".format(cmd, rolls_cnt, rolls_dice)
                 if mod_act is not None:
                     msg += mod_act + mod_num
                 self.reply_to_message(update, msg)
             else:
-                self.reply_to_message(update, "Need arguments for command\\. For example: `/2d6_1 2d6+1`",
-                                      is_markdown=True)
+                self.reply_to_message(update, self.ss.NEED_ARGUMENTS(update), is_markdown=True)
         else:
             custom_roll = self.db.get_custom_roll(user_id, cmd)
             if custom_roll is not None:
@@ -285,7 +265,7 @@ class Rollbot(Helper):
     def db_commit(self, update, _):
         if update.message.from_user.id == self.MASTER_ID:
             self.db.commit()
-            update.message.reply_text("OK")
+            update.message.reply_text(self.ss.OK(update))
 
     # log all errors
     def error_handler(self, update: Update, context: CallbackContext):

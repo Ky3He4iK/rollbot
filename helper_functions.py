@@ -1,6 +1,7 @@
 import random
 import os
 from database import Database
+from StringsStorage import StringsStorage
 
 
 class Helper:
@@ -10,6 +11,7 @@ class Helper:
 
     def __init__(self):
         self.db = Database()
+        self.ss = StringsStorage()
 
     # get creator of chat with chat_id
     @staticmethod
@@ -42,7 +44,7 @@ class Helper:
         return res
 
     @staticmethod
-    def reply_to_message(update, text, is_markdown=False):
+    def reply_to_message(update, text: str, is_markdown=False):
         while len(text) > 4095:
             last = text[:4096].rfind('\n')
             if last == -1:
@@ -212,8 +214,7 @@ class Helper:
                 command_text += mod_act + mod_num
         return [command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num]
 
-    @staticmethod
-    def is_user_has_stats_access(update, context) -> (bool, int, int):
+    def is_user_has_stats_access(self, update, context) -> (bool, int, int):
         # has_access, chat_id, user_id
         chat_id, user_id = update.message.chat_id, update.message.from_user.id
         is_admin = user_id == Helper.MASTER_ID or (chat_id != user_id and
@@ -223,7 +224,7 @@ class Helper:
         else:
             target_id = user_id
         if not is_admin and user_id != target_id:
-            Helper.reply_to_message(update, "Только создатель чата имеет доступ")
+            Helper.reply_to_message(update, self.ss.CHAT_CREATOR_ONLY(update))
             return False, chat_id, target_id
         return True, chat_id, target_id
 
