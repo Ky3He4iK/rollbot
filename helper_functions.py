@@ -1,6 +1,6 @@
 import random
 import os
-from database import Database, Stat, CustomRoll, CountedRoll, GlobalRoll
+from database import Database
 
 
 class Helper:
@@ -74,12 +74,10 @@ class Helper:
         except (TypeError, ValueError):
             return default
 
-
     # s - string with some expression and dices in format `5d9`
     #   (one or both arguments may be missing. Default value is 1d20; `d%` is `d100`)
     # random_generator - function that returns value from 1 to given argument inclusively
-    @staticmethod
-    def roll_processing(s):
+    def roll_processing(self, s):
         i = Helper.sanity_bound(s, Helper.ONLY_DIGITS + 'd% +-*/()')
         rest, s = s[i:], s[:i].strip()
         if len(s) == 0:
@@ -99,7 +97,7 @@ class Helper:
                         k += 1
                     mod = Helper.to_int(s[i + 1:k], max_v=1000000, default=20)
                     k -= 1
-                rolls += [str(random_generator(mod)) for _ in range(cnt)]
+                rolls += [str(self.rnd(mod)) for _ in range(cnt)]
                 added = '(' + '+'.join(rolls[len(rolls) - cnt:]) + ')'
                 s = s[:j + 1] + added + s[k + 1:]
                 i = j + len(added)
@@ -172,7 +170,6 @@ class Helper:
         except ZeroDivisionError:
             return None, "Division by zero"
 
-
     # return: [command_text, comment, count, dice, mod_act, mod_num]
     @staticmethod
     def parse_simple_roll(text, default_count=1, default_dice=20, default_mod_act=None, default_mod_num=None,
@@ -216,10 +213,11 @@ class Helper:
         return [command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num]
 
     @staticmethod
-    def is_user_has_stats_access(update, context, MASTER_ID) -> (bool, int, int):
+    def is_user_has_stats_access(update, context) -> (bool, int, int):
         # has_access, chat_id, user_id
         chat_id, user_id = update.message.chat_id, update.message.from_user.id
-        is_admin = user_id == MASTER_ID or (chat_id != user_id and Helper.get_chat_creator_id(context, chat_id) == user_id)
+        is_admin = user_id == Helper.MASTER_ID or (chat_id != user_id and
+                                                   Helper.get_chat_creator_id(context, chat_id) == user_id)
         if update.message.reply_to_message is not None:
             target_id = update.message.reply_to_message.from_user.id
         else:
