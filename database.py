@@ -81,7 +81,7 @@ class Database:
     }
 
     def __init__(self):
-        self._base = sqlite3.connect("rollbot.db", check_same_thread=False)
+        self._base = sqlite3.connect("data/rollbot.db", check_same_thread=False)
         self._base.isolation_level = None
 
     def close(self):
@@ -380,15 +380,15 @@ def import_data():
         queries = file.read().split(';\n\n')
         for query in queries:
             db._execute(query)
-    if os.path.isfile("stats.json"):
+    if os.path.isfile("data/stats.json"):
         # convert dict's keys from str to int
-        stats_t = json.loads(open("stats.json").read())
+        stats_t = json.loads(open("data/stats.json").read())
         stats = {int(dice): {int(res): stats_t[dice][res] for res in stats_t[dice]} for dice in stats_t}
         for dice, stat in stats.items():
             for roll, count in stat.items():
                 db.set_stat(Stat(dice, roll, count))
-    if os.path.isfile("custom_rolls.json"):
-        custom_rolls_t = json.loads(open("custom_rolls.json").read())
+    if os.path.isfile("data/custom_rolls.json"):
+        custom_rolls_t = json.loads(open("data/custom_rolls.json").read())
         custom_rolls = {int(user_id): custom_rolls_t[user_id] for user_id in custom_rolls_t}
         get_field = lambda dict, key: dict[key] if key in dict else None
         for user_id, rolls in custom_rolls.items():
