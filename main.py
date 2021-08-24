@@ -24,6 +24,7 @@ class Rollbot(Helper):
             'd': self.equation_roll,
             'stats': self.get_stats,
             'statsall': self.get_full_stats,
+            'start': self.help_handler,
             'help': self.help_handler,
             'add': self.add_command_handler,
             'remove': self.remove_command_handler,
@@ -142,7 +143,7 @@ class Rollbot(Helper):
                 msg = self.ss.STATS(update)
                 for roll in rolls:
                     msg += "\n{} - {} ".format(roll.command, roll.count) + self.ss.TIMES(update)
-                    self.reply_to_message(update, msg)
+                self.reply_to_message(update, msg)
 
     def reset_command_usage(self, update, context):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
@@ -250,7 +251,7 @@ class Rollbot(Helper):
             return  # Not a command
         user_id = update.message.from_user.id
         cmd = update.message.text.split()[0][1:].replace(context.bot.name, '').lstrip('/')
-        roll = self.db.get_global_roll(cmd)
+        roll = self.db.get_global_roll('/' + cmd)
         if roll is not None:
             return self.simple_roll(update, context, roll.count, roll.dice, roll.mod_act, roll.mod_num)
         if user_id in self.pending_rolls:
