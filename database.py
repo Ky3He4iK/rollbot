@@ -97,6 +97,10 @@ class Database:
             return Stat(*stat)
         return None
 
+    def filter_stat(self, dice: Optional[int], result: Optional[int]) -> List[Stat]:
+        stats = self.filter(Stat(dice, result, 0), ContentTypes.STAT)
+        return [Stat(*stat) for stat in stats]
+
     def set_stat(self, stat: Stat):
         return self.set(stat, ContentTypes.STAT)
 
@@ -121,6 +125,10 @@ class Database:
             return CustomRoll(*custom_roll)
         return None
 
+    def filter_custom_roll(self, user_id: Optional[int], shortcut: Optional[str]) -> List[CustomRoll]:
+        custom_rolls = self.filter(CustomRoll(user_id, shortcut, 0, 0, None, None), ContentTypes.CUSTOM_ROLL)
+        return [CustomRoll(*custom_roll) for custom_roll in custom_rolls]
+
     def set_custom_roll(self, custom_roll: CustomRoll):
         return self.set(custom_roll, ContentTypes.CUSTOM_ROLL)
 
@@ -137,6 +145,10 @@ class Database:
             return GlobalRoll(*global_roll)
         return None
 
+    def filter_global_roll(self, shortcut: Optional[str]) -> List[GlobalRoll]:
+        global_rolls = self.filter(GlobalRoll(shortcut, 0, 0, None, None), ContentTypes.GLOBAL_ROLL)
+        return [GlobalRoll(*roll) for roll in global_rolls]
+
     def set_global_roll(self, global_roll: GlobalRoll):
         return self.set(global_roll, ContentTypes.GLOBAL_ROLL)
 
@@ -152,6 +164,11 @@ class Database:
         if counted_roll:
             return CountedRoll(*counted_roll)
         return None
+
+    def filter_counted_roll(self, chat_id: Optional[int], user_id: Optional[int], command: Optional[str]) \
+            -> List[CountedRoll]:
+        counted_rolls = self.filter(CountedRoll(chat_id, user_id, command, 0), ContentTypes.COUNTED_ROLL)
+        return [CountedRoll(*roll) for roll in counted_rolls]
 
     def set_counted_roll(self, counted_roll: CountedRoll):
         return self.set(counted_roll, ContentTypes.COUNTED_ROLL)
@@ -201,6 +218,11 @@ class Database:
         if len(res) == 1:
             return res[0]
         return None
+
+    def filter(self, obj, classname: str):
+        info = self.CONTENT_INFO[classname]
+        fields_map = {c: getattr(obj, c) for c in info[0] if getattr(obj, c) is not None}
+        return self._select(info[2], fields_map.keys(), fields_map.values())
 
     def get_all(self, classname):
         return self._select(self.CONTENT_INFO[classname][2], None, None)

@@ -201,6 +201,9 @@ class Helper:
                     split_pos = Helper.sanity_bound(mod_num, Helper.ONLY_DIGITS)  # remove other actions
                     mod_num, comment = mod_num[:split_pos], mod_num[split_pos:] + comment
                     break
+                elif command[i] in 'hl':
+                    mod_num = command[i]
+                    command = command[:i]
             command = command.split('d')
             rolls_cnt = Helper.to_int(command[0], default=1, max_v=1000) * default_count
             if len(command) > 1:
@@ -212,6 +215,8 @@ class Helper:
             command_text = command_shortcut + "{}d{}".format(rolls_cnt, rolls_dice)
             if mod_act is not None:
                 command_text += mod_act + mod_num
+            elif mod_num is not None:
+                command_text += mod_num
         return [command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num]
 
     def is_user_has_stats_access(self, update, context) -> (bool, int, int):

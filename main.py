@@ -52,24 +52,31 @@ class Rollbot(Helper):
             # get numbers and generate text
             rolls = [self.rnd(rolls_dice) for _ in range(rolls_cnt)]
             rolls_info = ' + '.join(str(r) for r in rolls)
-            if mod_act is not None:
+            if rolls_cnt > 1:
+                if cnt > 1:
+                    rolls_sums = '(' + \
+                                 ') + ('.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
+                                 + ')'
+                else:
+                    rolls_sums = '(' + ' + '.join(str(roll) for roll in rolls) + ')'
+            else:
+                rolls_sums = ''
+            if mod_num is not None:
                 if mod_num == 'h':
                     rolls_info = 'Max of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(max(rolls))
                 elif mod_num == 'l':
                     rolls_info = 'Min of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(min(rolls))
                 elif self.sanity_bound(mod_num, self.ONLY_DIGITS) == len(mod_num) > 0:
                     # PyCharm says it's ok. I hope so
-                    rolls_info = '(' + rolls_info + ') ' + mod_act + ' ' + mod_num + ' = ' + \
+                    rolls_info = rolls_sums + ' ' + mod_act + ' ' + mod_num + ' = ' + \
                                  str(eval(str(sum(rolls)) + mod_act + mod_num))
                 else:
                     comment = mod_act + mod_num + comment
             text = self.get_user_name(update) + ': ' + comment + '\n' + rolls_info
-            if rolls_cnt > 1 and mod_act is None:
+            if rolls_cnt > 1 and mod_num is None:
                 text += '\nSum: '
                 if cnt != 1:
-                    text += '(' \
-                            + ') + ('.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
-                            + ') = '
+                    text += rolls_sums + ' = '
                 text += str(sum(rolls))
             self.reply_to_message(update, text)
             self.db.increment_counted_roll(update.message.chat_id, update.message.from_user.id, command_text)
@@ -135,8 +142,7 @@ class Rollbot(Helper):
     def get_command_usage(self, update, context):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
-            rolls = list(filter(lambda r: r.chat_id == chat_id and r.user_id == target_id,
-                                self.db.get_all_counted_rolls()))
+            rolls = self.db.filter_counted_roll(chat_id, user_id=target_id, command=None)
             if len(rolls) == 0:
                 self.reply_to_message(update, self.ss.NO_USER_STATS(update))
             else:
@@ -233,7 +239,7 @@ class Rollbot(Helper):
 
     def list_command_handlers(self, update, _):
         user_id = update.message.from_user.id
-        custom_rolls = list(filter(lambda c_roll: c_roll.user_id == user_id, self.db.get_all_custom_rolls()))
+        custom_rolls = self.db.filter_custom_roll(user_id, shortcut=None)
         if len(custom_rolls) == 0:
             self.reply_to_message(update, self.ss.NO_CUSTOM(update))
         else:
