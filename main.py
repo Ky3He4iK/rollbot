@@ -151,9 +151,9 @@ class Rollbot(Helper):
                     msg += "\n{} - {} ".format(roll.command, roll.count) + self.ss.TIMES(update)
                 self.reply_to_message(update, msg)
 
-    def reset_command_usage(self, update, context):
+    def reset_command_usage(self, update: Update, context: CallbackContext):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
-        creator_id = self.get_chat_creator_id(context, chat_id)
+        creator_id = self.get_chat_creator_id(context, chat_id, update.message.chat.type)
         if has_access:
             cmds = update.message.text.split(' ')
             if len(cmds) == 1:
@@ -168,7 +168,7 @@ class Rollbot(Helper):
                     roll.count = self.to_int(cmds[2], default=0, max_v=1000_000_000)
                     msg = self.ss.SET_NEW_VALUE(update).format(roll.count, count)
                 else:
-                    msg = self.ss.ACCESS_DENIED
+                    msg = self.ss.ACCESS_DENIED(update)
             else:
                 roll.count = 0
                 msg = self.ss.RESET_OLD_VALUE(update) + str(count)

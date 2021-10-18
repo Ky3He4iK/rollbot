@@ -11,6 +11,12 @@ class String:
             return self.ru_str
         return self.en_str
 
+    def __len__(self):
+        return len(self.en_str)
+
+    def __str__(self):
+        return self.en_str
+
 
 class StringsStorage:
     CHAT_CREATOR_ONLY = String("Только создатель чата имеет доступ", "Only creator of this chat has access")

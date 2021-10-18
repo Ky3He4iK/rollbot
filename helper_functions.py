@@ -1,5 +1,8 @@
 import random
 import os
+
+from telegram import Chat
+
 from database import Database
 from StringsStorage import StringsStorage
 
@@ -15,7 +18,9 @@ class Helper:
 
     # get creator of chat with chat_id
     @staticmethod
-    def get_chat_creator_id(context, chat_id):
+    def get_chat_creator_id(context, chat_id, chat_type):
+        if chat_type == Chat.PRIVATE:
+            return chat_id
         return list(filter(lambda a: a.status == a.CREATOR, context.bot.getChatAdministrators(chat_id)))[0].user.id
 
     # get number in [1, max_val] using "true" random
@@ -207,7 +212,7 @@ class Helper:
             command = command.split('d')
             rolls_cnt = Helper.to_int(command[0], default=1, max_v=1000) * default_count
             if len(command) > 1:
-                rolls_dice = Helper.to_int(command[1], default=None, max_v=1000000)
+                rolls_dice = Helper.to_int(command[1], default=default_dice, max_v=1000000)
         if rolls_dice == default_dice and rolls_cnt == default_count and eq(mod_act, default_mod_act) and \
                 eq(mod_num, default_mod_num):
             command_text = command_shortcut
@@ -222,8 +227,9 @@ class Helper:
     def is_user_has_stats_access(self, update, context) -> (bool, int, int):
         # has_access, chat_id, user_id
         chat_id, user_id = update.message.chat_id, update.message.from_user.id
-        is_admin = user_id == Helper.MASTER_ID or (chat_id != user_id and
-                                                   Helper.get_chat_creator_id(context, chat_id) == user_id)
+        is_admin = user_id == Helper.MASTER_ID or (
+                chat_id != user_id and Helper.get_chat_creator_id(context, chat_id, update.message.chat.type) == user_id
+        )
         if update.message.reply_to_message is not None:
             target_id = update.message.reply_to_message.from_user.id
         else:
