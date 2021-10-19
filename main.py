@@ -236,9 +236,8 @@ class Rollbot(Helper):
             overall = sum(stats[dice].values())
             msg = self.ss.STATS_UPTIME(update).format(
                 (time.time() - self.start_time) / 3600) + self.ss.STATS_DICE(update).format(dice, overall)
-            for i in range(1, dice + 1):
-                if i in stats[dice]:
-                    msg += "\n{0}: {1:.3f}".format(i, stats[dice][i] / overall * 100)
+            for roll, count in sorted(stats[dice].items()):
+                msg += "\n{0}: {1:.3f}".format(roll, count * 100 / overall)
         else:
             msg = self.ss.NO_DICE_STATS(update)
         self.reply_to_message(update, msg)
@@ -247,16 +246,15 @@ class Rollbot(Helper):
     def get_full_stats(self, update, _):
         msg = self.ss.STATS_UPTIME(update).format((time.time() - self.start_time) / 3600)
         stats = self.stats_to_dict()
-        for key in sorted(stats.keys()):
-            stat_sum = sum(stats[key])
+        for key, rolls in sorted(stats.items()):
+            stat_sum = sum(rolls.values())
             msg += self.ss.STATS_DICE(update).format(key, stat_sum)
-            for i in range(1, key + 1):
-                if i in stats[key]:
-                    addition = "\n{}: {:.3f}".format(i, stats[key][i] / stat_sum * 100)
-                    if len(msg) + len(addition) > 4000:
-                        self.reply_to_message(update, msg)
-                        msg = ''
-                    msg += addition
+            for roll, count in sorted(rolls.items()):
+                addition = "\n{}: {:.3f}".format(roll, count * 100 / stat_sum)
+                if len(msg) + len(addition) > 4000:
+                    self.reply_to_message(update, msg)
+                    msg = ''
+                msg += addition
         self.reply_to_message(update, msg)
 
     def help_handler(self, update, _):
