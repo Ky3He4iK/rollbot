@@ -7,7 +7,7 @@ from telegram import Update
 
 import rollbot_secret_token
 from helper_functions import Helper
-from database import CustomRoll, GlobalRoll
+from database import CustomRoll, GlobalRoll, CountingCriteria
 
 
 class Rollbot(Helper):
@@ -34,7 +34,10 @@ class Rollbot(Helper):
             'remove_global': self.remove_global_command,
             'get_globals': self.get_global_commands,
             'get': self.get_command_usage,
-            'reset': self.reset_command_usage
+            'reset': self.reset_command_usage,
+            'get_criteria': self.get_counting_criteria,
+            'add_criteria': self.add_counting_criteria,
+            'remove_criteria': self.remove_counting_criteria,
         }
 
     def stop(self):
@@ -44,8 +47,8 @@ class Rollbot(Helper):
         return lambda update, context: self.simple_roll(update, context, cnt, dice)
 
     # params: update and context
-    def simple_roll(self, update: Update, context, cnt=1, rolls_dice=20, mod_act=None, mod_num=None):
-        parsed = self.parse_simple_roll(update.message.text, cnt, rolls_dice, mod_act, mod_num, context.bot.name)
+    def simple_roll(self, update: Update, context, cnt=1, default_dice=20, mod_act=None, mod_num=None):
+        parsed = self.parse_simple_roll(update.message.text, cnt, default_dice, mod_act, mod_num, context.bot.name)
         command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
 
         try:
@@ -67,7 +70,6 @@ class Rollbot(Helper):
                 elif mod_num == 'l':
                     rolls_info = 'Min of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(min(rolls))
                 elif self.sanity_bound(mod_num, self.ONLY_DIGITS) == len(mod_num) > 0:
-                    # PyCharm says it's ok. I hope so
                     rolls_info = rolls_sums + ' ' + mod_act + ' ' + mod_num + ' = ' + \
                                  str(eval(str(sum(rolls)) + mod_act + mod_num))
                 else:
@@ -79,7 +81,13 @@ class Rollbot(Helper):
                     text += rolls_sums + ' = '
                 text += str(sum(rolls))
             self.reply_to_message(update, text)
-            self.db.increment_counted_roll(update.message.chat_id, update.message.from_user.id, command_text)
+            criteria = self.db.get_counting_criteria(update.message.chat_id, command_text.split()[0])
+            if criteria is not None and default_dice == rolls_dice:
+                for i in range(rolls_cnt // cnt):
+                    i_sum = sum(rolls[i * cnt:(i + 1) * cnt])
+                    if criteria.min_value <= i_sum <= criteria.max_value:
+                        self.db.increment_counting_data(update.message.chat_id, update.message.from_user.id,
+                                                        command_text)
         except Exception as e:
             update.message.reply_text("{}: {}\n{}".format(self.get_user_name(update), update.message.text[3:],
                                                           ' + '.join(str(self.rnd(rolls_dice)) for _ in range(cnt))))
@@ -142,7 +150,7 @@ class Rollbot(Helper):
     def get_command_usage(self, update, context):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
-            rolls = self.db.filter_counted_roll(chat_id, user_id=target_id, command=None)
+            rolls = self.db.filter_counting_data(chat_id, user_id=target_id, command=None)
             if len(rolls) == 0:
                 self.reply_to_message(update, self.ss.NO_USER_STATS(update))
             else:
@@ -159,7 +167,7 @@ class Rollbot(Helper):
             if len(cmds) == 1:
                 return self.reply_to_message(update, self.ss.USAGE(update) + "/reset cmd")
             cmd = cmds[1]
-            roll = self.db.get_counted_roll(chat_id, target_id, cmd)
+            roll = self.db.get_counting_data(chat_id, target_id, cmd)
             if roll is None:
                 return self.reply_to_message(update, self.ss.NOTHING_RESET(update))
             count = roll.count
@@ -172,7 +180,50 @@ class Rollbot(Helper):
             else:
                 roll.count = 0
                 msg = self.ss.RESET_OLD_VALUE(update) + str(count)
-            self.db.set_counted_roll(roll)
+            self.db.set_counting_data(roll)
+            self.reply_to_message(update, msg)
+
+    def get_counting_criteria(self, update: Update, context: CallbackContext):
+        has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
+        if has_access:
+            rolls = self.db.filter_counting_criteria(chat_id, command=None)
+            msg = self.ss.CRITERIA(update)
+            for roll in rolls:
+                msg += "\n{}".format(roll.command)
+                if roll.min_value is not None:
+                    msg += ' ' + self.ss.FROM(update) + str(roll.min_value)
+                if roll.max_value is not None:
+                    msg += ' ' + self.ss.TO(update) + str(roll.max_value)
+            self.reply_to_message(update, msg)
+
+    def add_counting_criteria(self, update: Update, context: CallbackContext):
+        has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
+        if has_access:
+            cmds = update.message.text.split(' ')
+            if len(cmds) != 4:
+                return self.reply_to_message(update, self.ss.USAGE(update) + "/add_criteria /c1 0 10")
+            cmd, min_v, max_v = cmds[1:]
+            res = self.db.set_counting_criteria(CountingCriteria(chat_id, cmd, min_v, max_v))
+            if res:
+                msg = self.ss.OK
+            else:
+                msg = self.ss.ERROR
+        else:
+            msg = self.ss.ACCESS_DENIED
+        self.reply_to_message(update, msg)
+
+    def remove_counting_criteria(self, update: Update, context: CallbackContext):
+        has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
+        if has_access:
+            cmds = update.message.text.split(' ')
+            if len(cmds) == 1:
+                return self.reply_to_message(update, self.ss.USAGE(update) + "/remove_criteria /c1")
+            cmd = cmds[1]
+            res = self.db.remove_counting_criteria(CountingCriteria(chat_id, cmd))
+            if res:
+                msg = self.ss.NOTHING_DELETE
+            else:
+                msg = self.ss.OK
             self.reply_to_message(update, msg)
 
     # get stats only to d20

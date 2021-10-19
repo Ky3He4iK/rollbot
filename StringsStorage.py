@@ -6,15 +6,15 @@ class String:
     ru_str: str
     en_str: str
 
-    def __call__(self, update):
+    def __call__(self, update) -> str:
         if update.message.from_user.language_code == "ru":
             return self.ru_str
         return self.en_str
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.en_str)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.en_str
 
 
@@ -29,8 +29,12 @@ class StringsStorage:
     GLOBAL_COMMANDS = String("Глобальные комманды:", "Global commands:")
     NO_USER_STATS = String("Нет статистики для этого пользователя", "No statistics for this user")
     STATS = String("Статистика:", "Statistics:")
+    CRITERIA = String("Критерии:", "Criteria:")
+    FROM = String("от ", "from ")
+    TO = String("до ", "to ")
     TIMES = String("раз", "times")
     NOTHING_RESET = String("Нечего сбрасывать", "Nothing to reset")
+    NOTHING_DELETE = String("Нечего удалять", "Nothing to remove")
     RESET_OLD_VALUE = String("Сброшено. Старое значение: ", "Reset. Old value: ")
     SET_NEW_VALUE = String("Установлено новое значение. Теперь {} вместо {}", "Set a new value. Now {} instead of {}")
     NO_DICE_STATS = String("Нет информации для этой кости", "No information for this dice!")
@@ -45,6 +49,8 @@ class StringsStorage:
     NEED_ARGUMENTS = String("Нужны аргументы для комманды\\. Например: `/2d6_1 2d6+1`",
                             "Need arguments for command\\. For example: `/2d6_1 2d6+1`")
     OK = String("Ок", "OK")
+    ERROR = String("Error", "Oшибка")
+    HISTORY = String("История:", "History:")
     HELP_MESSAGE = String("""
 /r - кинуть кости. Можно указать количество костей и количество граней на каждой кости, например /r 3d6 - куб на статы. Можно еще указать модификатор броска, например /r +3
 Указывается либо количество костей (число), либо количество граней (d + число), либо модификатор (знак модификатора - один из "-+*/" + число), либо любая их комбинация, например /r 5d8*3

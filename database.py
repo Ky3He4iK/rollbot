@@ -33,10 +33,18 @@ class GlobalRoll:
 
 
 @dataclass
-class CountedRoll:
+class CountingCriteria:
     chat_id: int
-    user_id: int
     command: str
+    min_value: Optional[int] = None
+    max_value: Optional[int] = None
+
+
+@dataclass
+class CountingData:
+    chat_id: int
+    command: str
+    user_id: int
     count: int
 
 
@@ -50,39 +58,49 @@ class ContentTypes:
     STAT = "Stat"
     CUSTOM_ROLL = "CustomRoll"
     GLOBAL_ROLL = "GlobalRoll"
-    COUNTED_ROLL = "CountedRoll"
+    COUNTING_CRITERIA = "CountingCriteria"
+    COUNTING_DATA = "CountingData"
 
 
 class Database:
     # название класса: [[столбцы, которые являются фильтрами], [столбцы, значение в которых может меняться],
-    #                   "название таблицы"]
+    #                   "название таблицы", в основной БД или нет]
     # все столбцы в таблице должны быть указаны
     CONTENT_INFO = {
         ContentTypes.STAT: [
             ["dice", "result"],
             ["count"],
-            "stats"
+            "stats",
         ],
         ContentTypes.CUSTOM_ROLL: [
             ["user_id", "shortcut"],
             ["count", "dice", "mod_act", "mod_num"],
-            "custom_rolls"
+            "custom_rolls",
         ],
         ContentTypes.GLOBAL_ROLL: [
             ["shortcut"],
             ["count", "dice", "mod_act", "mod_num"],
-            "global_rolls"
+            "global_rolls",
         ],
-        ContentTypes.COUNTED_ROLL: [
+        ContentTypes.COUNTING_CRITERIA: [
+            ["chat_id", "command"],
+            ["min_value", "max_value"],
+            "counting_criteria",
+        ],
+        ContentTypes.COUNTING_DATA: [
             ["chat_id", "user_id", "command"],
             ["count"],
-            "counted_rolls"
+            "counting_data",
         ],
     }
 
     def __init__(self):
         self._base = sqlite3.connect("data/rollbot.db", check_same_thread=False)
         self._base.isolation_level = None
+        with open('create_db.sql') as file:
+            queries = file.read().split(';\n\n')
+            for query in queries:
+                self._execute(query)
 
     def close(self):
         self._base.close()
@@ -158,34 +176,55 @@ class Database:
     def remove_global_roll(self, global_roll: GlobalRoll):
         return self.remove(global_roll, ContentTypes.GLOBAL_ROLL)
 
-    # counted roll
-    def get_counted_roll(self, chat_id: int, user_id: int, command: str) -> Optional[CountedRoll]:
-        counted_roll = self.get(CountedRoll(chat_id, user_id, command, 0), ContentTypes.COUNTED_ROLL)
-        if counted_roll:
-            return CountedRoll(*counted_roll)
+    # counting criteria
+    def get_counting_criteria(self, chat_id: int, command: str) -> Optional[CountingCriteria]:
+        counting_criteria = self.get(CountingCriteria(chat_id, command), ContentTypes.COUNTING_CRITERIA)
+        if counting_criteria:
+            return CountingCriteria(*counting_criteria)
         return None
 
-    def filter_counted_roll(self, chat_id: Optional[int], user_id: Optional[int], command: Optional[str]) \
-            -> List[CountedRoll]:
-        counted_rolls = self.filter(CountedRoll(chat_id, user_id, command, 0), ContentTypes.COUNTED_ROLL)
-        return [CountedRoll(*roll) for roll in counted_rolls]
+    def filter_counting_criteria(self, chat_id: Optional[int], command: Optional[str]) \
+            -> List[CountingCriteria]:
+        counting_criterias = self.filter(CountingCriteria(chat_id, command), ContentTypes.COUNTING_CRITERIA)
+        return [CountingCriteria(*roll) for roll in counting_criterias]
 
-    def set_counted_roll(self, counted_roll: CountedRoll):
-        return self.set(counted_roll, ContentTypes.COUNTED_ROLL)
+    def set_counting_criteria(self, counting_criteria: CountingCriteria):
+        return self.set(counting_criteria, ContentTypes.COUNTING_CRITERIA)
 
-    def get_all_counted_rolls(self):
-        return [CountedRoll(*row) for row in self.get_all(ContentTypes.COUNTED_ROLL)]
+    def get_all_counting_criterias(self):
+        return [CountingCriteria(*row) for row in self.get_all(ContentTypes.COUNTING_CRITERIA)]
 
-    def increment_counted_roll(self, chat_id: int, user_id: int, command: str):
-        counted_roll = self.get_counted_roll(chat_id, user_id, command)
-        if counted_roll is None:
-            counted_roll = CountedRoll(chat_id, user_id, command, 1)
+    def remove_counting_criteria(self, counting_criteria: CountingCriteria):
+        return self.remove(counting_criteria, ContentTypes.COUNTING_CRITERIA)
+
+    # counting data
+    def get_counting_data(self, chat_id: int, user_id: int, command: str) -> Optional[CountingData]:
+        counting_data = self.get(CountingData(chat_id, command, user_id, 0), ContentTypes.COUNTING_DATA)
+        if counting_data:
+            return CountingData(*counting_data)
+        return None
+
+    def filter_counting_data(self, chat_id: Optional[int], user_id: Optional[int], command: Optional[str]) \
+            -> List[CountingData]:
+        counting_datas = self.filter(CountingData(chat_id, command, user_id, 0), ContentTypes.COUNTING_DATA)
+        return [CountingData(*roll) for roll in counting_datas]
+
+    def set_counting_data(self, counting_data: CountingData):
+        return self.set(counting_data, ContentTypes.COUNTING_DATA)
+
+    def get_all_counting_data(self):
+        return [CountingData(*row) for row in self.get_all(ContentTypes.COUNTING_DATA)]
+
+    def increment_counting_data(self, chat_id: int, user_id: int, command: str):
+        counting_data = self.get_counting_data(chat_id, user_id, command)
+        if counting_data is None:
+            counting_data = CountingData(chat_id, command, user_id, 1)
         else:
-            counted_roll.count += 1
-        return self.set(counted_roll, ContentTypes.COUNTED_ROLL)
+            counting_data.count += 1
+        return self.set(counting_data, ContentTypes.COUNTING_DATA)
 
-    def remove_counted_roll(self, counted_roll: CountedRoll):
-        return self.remove(counted_roll, ContentTypes.COUNTED_ROLL)
+    def remove_counting_data(self, counting_data: CountingData):
+        return self.remove(counting_data, ContentTypes.COUNTING_DATA)
 
     # internal universal methods
     def set(self, obj, classname: str):
@@ -222,6 +261,12 @@ class Database:
     def filter(self, obj, classname: str):
         info = self.CONTENT_INFO[classname]
         fields_map = {c: getattr(obj, c) for c in info[0] if getattr(obj, c) is not None}
+        return self._select(info[2], fields_map.keys(), fields_map.values())
+
+    def search(self, obj, classname: str):
+        info = self.CONTENT_INFO[classname]
+        fields_map = {c: getattr(obj, c) for c in info[0] if getattr(obj, c) is not None}
+        fields_map.update({c: getattr(obj, c) for c in info[1] if getattr(obj, c) is not None})
         return self._select(info[2], fields_map.keys(), fields_map.values())
 
     def get_all(self, classname):

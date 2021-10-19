@@ -4,7 +4,9 @@ import os
 from telegram import Chat
 
 from database import Database
-from StringsStorage import StringsStorage
+from StringsStorage import StringsStorage, String
+
+from typing import Union
 
 
 class Helper:
@@ -49,7 +51,9 @@ class Helper:
         return res
 
     @staticmethod
-    def reply_to_message(update, text: str, is_markdown=False):
+    def reply_to_message(update, text: Union[str, String], is_markdown=False):
+        if isinstance(text, String):
+            text = text(update)
         while len(text) > 4095:
             last = text[:4096].rfind('\n')
             if last == -1:
@@ -217,7 +221,7 @@ class Helper:
                 eq(mod_num, default_mod_num):
             command_text = command_shortcut
         else:
-            command_text = command_shortcut + "{}d{}".format(rolls_cnt, rolls_dice)
+            command_text = command_shortcut + " {}d{}".format(rolls_cnt, rolls_dice)
             if mod_act is not None:
                 command_text += mod_act + mod_num
             elif mod_num is not None:
