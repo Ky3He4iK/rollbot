@@ -73,9 +73,12 @@ class StringsStorage:
 /stats N - получить статистику для роллов дайса N, по умолчанию 20
 /statsall - получить статистику всех бросков
 /get (в ответ на чье-нибудь сообщение) - узнать, сколько раз человек кидал какие роллы в этом чате
-/reset /c (в ответ на чье-нибудь сообщение) - сбросить статистику человека для комманды /c
-Если надо установить определенное значение статистики, то указать после комманды, например /reset /c 42 (только для создателя чата)
+/reset /c1 (в ответ на чье-нибудь сообщение) - сбросить статистику человека для комманды /c1
+Если надо установить определенное значение статистики, то указать после комманды, например /reset /c1 42
 Чужую статистику смотреть и сбрасывать можно только создателю чата (и создателю бота, по блату)
+/get_criteria - получить список запоминаемых роллов в чате
+/add_criteria /c1 N M - добавить команду /c1 к отслеживаемым броскам в этом чате. Запоминаться будут только броски с результатом от N до M включительно
+/remove_criteria /c1 - перестать отслеживать команду /c1
 """, """
 /r - Throw dices. You can specify dice count and number of faces of each dice, for example /r 3d6 - cube for statistics check. You can also specify throw modifier, for example /r +3
 Specify either the number of bones (number), or the number of faces (d + number), or a modifier (modifier sign - one of "-+*/" + number), or any combination of them, for example /r 5d8*3
@@ -98,9 +101,13 @@ The bot also collects statistics:
 /stats N - get statistics for N dice rolls, by default 20
 /statsall - get statistics of all throws
 /get (in response to someone's message) - find out how many times a person has thrown which rolls in this chat
-/reset /c (in response to someone's message) - reset the person's statistics for the /c command
-If you need to set a specific value of statistics, then specify after the command, for example /reset /c 42 (chat creator only) 
-Someone else's statistics can only be viewed and reset by the creator of the chat""")
+/reset /c1 (in response to someone's message) - reset the person's statistics for the /c1 command
+If you need to set a specific value of statistics, then specify after the command, for example /reset /c1 42 (chat creator only) 
+Someone else's statistics can only be viewed and reset by the creator of the chat
+/get_criteria - get a list of memorized rolls in the chat 
+/add_criteria /c1 N M - add command /c1 to tracked throws in this chat. Only throws with a result from N to M will be remembered. 
+/remove_criteria /c1 - stop tracking the command /c1
+""")
     HELP_MASTER = String("""
 \n/add_globall /roll 1d20 - добавить новую глобальную комманду
 \n/remove_globall /roll - удалить глобальную комманду

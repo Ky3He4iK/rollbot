@@ -184,17 +184,15 @@ class Rollbot(Helper):
             self.reply_to_message(update, msg)
 
     def get_counting_criteria(self, update: Update, context: CallbackContext):
-        has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
-        if has_access:
-            rolls = self.db.filter_counting_criteria(chat_id, command=None)
-            msg = self.ss.CRITERIA(update)
-            for roll in rolls:
-                msg += "\n{}".format(roll.command)
-                if roll.min_value is not None:
-                    msg += ' ' + self.ss.FROM(update) + str(roll.min_value)
-                if roll.max_value is not None:
-                    msg += ' ' + self.ss.TO(update) + str(roll.max_value)
-            self.reply_to_message(update, msg)
+        rolls = self.db.filter_counting_criteria(update.message.chat_id, command=None)
+        msg = self.ss.CRITERIA(update)
+        for roll in rolls:
+            msg += "\n{}".format(roll.command)
+            if roll.min_value is not None:
+                msg += ' ' + self.ss.FROM(update) + str(roll.min_value)
+            if roll.max_value is not None:
+                msg += ' ' + self.ss.TO(update) + str(roll.max_value)
+        self.reply_to_message(update, msg)
 
     def add_counting_criteria(self, update: Update, context: CallbackContext):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
