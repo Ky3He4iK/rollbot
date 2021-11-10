@@ -7,7 +7,7 @@ class String:
     en_str: str
 
     def __call__(self, update) -> str:
-        if update.message.from_user.language_code == "ru":
+        if update.message is not None and update.message.from_user.language_code == "ru":
             return self.ru_str
         return self.en_str
 

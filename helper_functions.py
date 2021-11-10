@@ -1,18 +1,25 @@
 import random
 import os
+import re
+from typing import Union, List, Optional
 
-from telegram import Chat
+from telegram import Chat, Update
 
 from database import Database
 from StringsStorage import StringsStorage, String
-
-from typing import Union
 
 
 class Helper:
     MASTER_ID = 351693351
     ONLY_DIGITS = ''.join(str(i) for i in range(10))
     DICE_NOTATION = ONLY_DIGITS + 'dD%+-*/hHlL '
+    # Scary regex. For "/r 1d20+5 asd" will match:
+    # {'cmd': 'r', 'roll': '1', 'dice': '20', 'mod_act': '+', 'mod_val': '5', 'mod_sel': None, 'comment': 'asd'}
+    # for "/r 2h": {'cmd': 'r', 'roll': '2', 'mod_sel': 'h'} (None fields are skipped)
+    COMMAND_REGEX = re.compile(r"/(?P<cmd>\w+)(@(?P<botname>\w+))?"
+                               r"\s?(?P<count>\d+)?(d(?P<dice>(\d+|%)))?"
+                               r"(((?P<mod_act>[+\-*/])(?P<mod_num>\d+))|(?P<mod_sel>[hlHL]))?"
+                               r"(\s(?P<comment>.*))?")
 
     def __init__(self):
         self.db = Database()
@@ -80,6 +87,8 @@ class Helper:
     # converts string to integer bounded to [min_v, max_v]. Returns default on fault
     @staticmethod
     def to_int(data, *_, default, max_v, min_v=1):
+        if data is None:
+            return default
         try:
             return min(max(int(data), min_v), max_v)
         except (TypeError, ValueError):
@@ -183,45 +192,36 @@ class Helper:
 
     # return: [command_text, comment, count, dice, mod_act, mod_num]
     @staticmethod
-    def parse_simple_roll(text, default_count=1, default_dice=20, default_mod_act=None, default_mod_num=None,
-                          botname='@dice_cheating_bot'):
+    def parse_simple_roll(text, default_count=1, default_dice=20, default_mod_act=None, default_mod_num=None) -> \
+            List[str, str, int, int, Optional[str], Optional[Union[int, str]]]:
         def eq(a, b) -> bool:
             if b is None:
                 return a is None
             return a == b
 
-        # separating comment and roll params
-        ts = text.split(' ', 1)
-        comment = ''
-        rolls_dice, rolls_cnt = default_dice, default_count
-        mod_act, mod_num = default_mod_act, default_mod_num
-        command_shortcut = ts[0].replace(botname, '')
-        if len(ts) > 1:  # not only `r`
-            # cut out comment
-            split_pos = Helper.sanity_bound(ts[1], Helper.DICE_NOTATION)
-            command, comment = ts[1][:split_pos].strip().lower(), ts[1][split_pos:].strip()
-            # cut out appendix (+6, *4, etc.)
-            for i in range(len(command)):
-                if command[i] in '+-*/':
-                    mod_act = command[i]
-                    if mod_act == '/':
-                        mod_act = '//'
-                    command, mod_num = [s.strip() for s in command.split(command[i], 1)]
-                    split_pos = Helper.sanity_bound(mod_num, Helper.ONLY_DIGITS)  # remove other actions
-                    mod_num, comment = mod_num[:split_pos], mod_num[split_pos:] + comment
-                    break
-                elif command[i] in 'hl':
-                    mod_num = command[i]
-                    command = command[:i]
-            command = command.split('d')
-            rolls_cnt = Helper.to_int(command[0], default=1, max_v=1000) * default_count
-            if len(command) > 1:
-                rolls_dice = Helper.to_int(command[1], default=default_dice, max_v=1000000)
+        def get(d, name):
+            if name in d:
+                return d[name]
+            return None
+
+        match = Helper.COMMAND_REGEX.match(text).groupdict()
+        command_shortcut = get(match, 'cmd') or ''
+        rolls_cnt = Helper.to_int(get(match, 'count'), default=1, max_v=1000) * default_count
+        if get(match, 'dice') == '%':
+            rolls_dice = 100
+        else:
+            rolls_dice = Helper.to_int(get(match, 'dice'), default=default_dice, max_v=1000_000)
+        mod_act = get(match, 'mod_act') or default_mod_act
+        if mod_act == '/':
+            mod_act = '//'
+        mod_num = get(match, 'mod_num') or get(match, 'mod_sel') or default_mod_num
+        comment = get(match, 'comment') or ''
+
         if rolls_dice == default_dice and rolls_cnt == default_count and eq(mod_act, default_mod_act) and \
                 eq(mod_num, default_mod_num):
             command_text = command_shortcut
         else:
-            command_text = command_shortcut + " {}d{}".format(rolls_cnt, rolls_dice)
+            command_text = "{} {}d{}".format(command_shortcut, rolls_cnt, rolls_dice)
             if mod_act is not None:
                 command_text += mod_act + mod_num
             elif mod_num is not None:
@@ -250,3 +250,44 @@ class Helper:
                 stats[stat.dice] = {}
             stats[stat.dice][stat.result] = stat.count
         return stats
+
+    def create_rolls_message(self, update: Update, rolls: List[int], default_cnt: int, default_dice: int,
+                             command_text: str, comment: str, rolls_cnt: int, rolls_dice: int,
+                             mod_act: Optional[str], mod_num: Optional[Union[int, str]]) -> str:
+        # def simple_roll(self, update: Update, context, cnt=1, default_dice=20, mod_act=None, mod_num=None):
+        #     parsed = self.parse_simple_roll(update.message.text, cnt, default_dice, mod_act, mod_num)
+        #     command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
+        rolls_info = ' + '.join(str(r) for r in rolls)
+        if rolls_cnt > 1:
+            if default_cnt > 1:
+                rolls_sums = '(' + ') + ('.join(str(sum(rolls[i * default_cnt:(i + 1) * default_cnt])) for i in
+                                                range(rolls_cnt // default_cnt)) + ')'
+            else:
+                rolls_sums = '(' + ' + '.join(str(roll) for roll in rolls) + ')'
+        else:
+            rolls_sums = str(rolls[0])
+        if mod_num is not None:
+            if mod_num == 'h':
+                rolls_info = 'Max of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(max(rolls))
+            elif mod_num == 'l':
+                rolls_info = 'Min of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(min(rolls))
+            elif self.sanity_bound(mod_num, self.ONLY_DIGITS) == len(mod_num) > 0:
+                rolls_info = rolls_sums + ' ' + mod_act + ' ' + mod_num + ' = ' + \
+                             str(eval(str(sum(rolls)) + mod_act + mod_num))
+            else:
+                comment = mod_act + mod_num + comment
+        text = self.get_user_name(update) + ': ' + comment + '\n' + rolls_info
+        if rolls_cnt > 1 and mod_num is None:
+            text += '\nSum: '
+            if default_cnt != 1:
+                text += rolls_sums + ' = '
+            text += str(sum(rolls))
+        self.reply_to_message(update, text)
+        criteria = self.db.get_counting_criteria(update.message.chat_id, command_text.split()[0])
+        if criteria is not None and default_dice == rolls_dice:
+            for i in range(rolls_cnt // default_cnt):
+                i_sum = sum(rolls[i * default_cnt:(i + 1) * default_cnt])
+                if criteria.min_value <= i_sum <= criteria.max_value:
+                    self.db.increment_counting_data(update.message.chat_id, update.message.from_user.id,
+                                                    command_text)
+        return text

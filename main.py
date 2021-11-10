@@ -47,50 +47,19 @@ class Rollbot(Helper):
         return lambda update, context: self.simple_roll(update, context, cnt, dice)
 
     # params: update and context
-    def simple_roll(self, update: Update, context, cnt=1, default_dice=20, mod_act=None, mod_num=None):
-        parsed = self.parse_simple_roll(update.message.text, cnt, default_dice, mod_act, mod_num, context.bot.name)
+    def simple_roll(self, update: Update, context, default_cnt=1, default_dice=20, mod_act=None, mod_num=None):
+        parsed = self.parse_simple_roll(update.message.text, default_cnt, default_dice, mod_act, mod_num)
         command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
 
         try:
             # get numbers and generate text
             rolls = [self.rnd(rolls_dice) for _ in range(rolls_cnt)]
-            rolls_info = ' + '.join(str(r) for r in rolls)
-            if rolls_cnt > 1:
-                if cnt > 1:
-                    rolls_sums = '(' + \
-                                 ') + ('.join(str(sum(rolls[i * cnt:(i + 1) * cnt])) for i in range(rolls_cnt // cnt)) \
-                                 + ')'
-                else:
-                    rolls_sums = '(' + ' + '.join(str(roll) for roll in rolls) + ')'
-            else:
-                rolls_sums = ''
-            if mod_num is not None:
-                if mod_num == 'h':
-                    rolls_info = 'Max of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(max(rolls))
-                elif mod_num == 'l':
-                    rolls_info = 'Min of (' + ', '.join(str(r) for r in rolls) + ') is ' + str(min(rolls))
-                elif self.sanity_bound(mod_num, self.ONLY_DIGITS) == len(mod_num) > 0:
-                    rolls_info = rolls_sums + ' ' + mod_act + ' ' + mod_num + ' = ' + \
-                                 str(eval(str(sum(rolls)) + mod_act + mod_num))
-                else:
-                    comment = mod_act + mod_num + comment
-            text = self.get_user_name(update) + ': ' + comment + '\n' + rolls_info
-            if rolls_cnt > 1 and mod_num is None:
-                text += '\nSum: '
-                if cnt != 1:
-                    text += rolls_sums + ' = '
-                text += str(sum(rolls))
-            self.reply_to_message(update, text)
-            criteria = self.db.get_counting_criteria(update.message.chat_id, command_text.split()[0])
-            if criteria is not None and default_dice == rolls_dice:
-                for i in range(rolls_cnt // cnt):
-                    i_sum = sum(rolls[i * cnt:(i + 1) * cnt])
-                    if criteria.min_value <= i_sum <= criteria.max_value:
-                        self.db.increment_counting_data(update.message.chat_id, update.message.from_user.id,
-                                                        command_text)
+
+            self.reply_to_message(update, self.create_rolls_message(update, rolls, default_cnt, default_dice, *parsed))
         except Exception as e:
             update.message.reply_text("{}: {}\n{}".format(self.get_user_name(update), update.message.text[3:],
-                                                          ' + '.join(str(self.rnd(rolls_dice)) for _ in range(cnt))))
+                                                          ' + '.join(
+                                                              str(self.rnd(rolls_dice)) for _ in range(default_cnt))))
             raise e
 
     def equation_roll(self, update, _):
@@ -110,7 +79,7 @@ class Rollbot(Helper):
             if update.message.text.count(' ') != 2:
                 return self.reply_to_message(update, self.ss.USAGE(update) + "/add_global /roll 1d20")
             _, shortcut, roll = update.message.text.split()
-            parsed = self.parse_simple_roll(shortcut + ' ' + roll, botname=context.bot.name)
+            parsed = self.parse_simple_roll(shortcut + ' ' + roll)
             command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
             roll = self.db.get_global_roll(shortcut)
             if roll is not None:
@@ -308,7 +277,7 @@ class Rollbot(Helper):
         if roll is not None:
             return self.simple_roll(update, context, roll.count, roll.dice, roll.mod_act, roll.mod_num)
         if user_id in self.pending_rolls:
-            parsed = self.parse_simple_roll(update.message.text, botname=context.bot.name)
+            parsed = self.parse_simple_roll(update.message.text)
             command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
             if ' ' in command_text:
                 self.db.set_custom_roll(CustomRoll(user_id, cmd, rolls_cnt, rolls_dice, mod_act, mod_num))
