@@ -1,9 +1,10 @@
 import random
 import os
 import re
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Iterable, Tuple
 
 from telegram import Chat, Update
+from telegram.ext import CallbackContext
 
 from database import Database
 from StringsStorage import StringsStorage, String
@@ -27,7 +28,7 @@ class Helper:
 
     # get creator of chat with chat_id
     @staticmethod
-    def get_chat_creator_id(context, chat_id, chat_type):
+    def get_chat_creator_id(context: CallbackContext, chat_id: int, chat_type: str) -> int:
         if chat_type == Chat.PRIVATE:
             return chat_id
         return list(filter(lambda a: a.status == a.CREATOR, context.bot.getChatAdministrators(chat_id)))[0].user.id
@@ -58,7 +59,7 @@ class Helper:
         return res
 
     @staticmethod
-    def reply_to_message(update, text: Union[str, String], is_markdown=False):
+    def reply_to_message(update: Update, text: Union[str, String], is_markdown: bool = False):
         if isinstance(text, String):
             text = text(update)
         while len(text) > 4095:
@@ -72,13 +73,12 @@ class Helper:
         update.message.reply_text(text, parse_mode=("MarkdownV2" if is_markdown else None))
 
     @staticmethod
-    def get_user_name(update):
-        return str(update.message.from_user.name) if update.message.from_user.name is not None \
-            else str(update.message.from_user.firstname)
+    def get_user_name(update: Update) -> str:
+        return str(update.message.from_user.name or update.message.from_user.firstname)
 
     # checks for sanity string. Returns first not sane index
     @staticmethod
-    def sanity_bound(string, allowed):
+    def sanity_bound(string: str, allowed: Iterable[str]) -> int:
         for i in range(len(string)):
             if string[i] not in allowed:
                 return i
@@ -86,7 +86,7 @@ class Helper:
 
     # converts string to integer bounded to [min_v, max_v]. Returns default on fault
     @staticmethod
-    def to_int(data, *_, default, max_v, min_v=1):
+    def to_int(data, *_, default: int, max_v: int, min_v: int = 1):
         if data is None:
             return default
         try:
@@ -96,8 +96,7 @@ class Helper:
 
     # s - string with some expression and dices in format `5d9`
     #   (one or both arguments may be missing. Default value is 1d20; `d%` is `d100`)
-    # random_generator - function that returns value from 1 to given argument inclusively
-    def roll_processing(self, s):
+    def roll_processing(self, s: str) -> Tuple[str, List[int], str]:
         i = Helper.sanity_bound(s, Helper.ONLY_DIGITS + 'd% +-*/()')
         rest, s = s[i:], s[:i].strip()
         if len(s) == 0:
@@ -125,7 +124,7 @@ class Helper:
         return s, rolls, rest
 
     @staticmethod
-    def calc(expression):
+    def calc(expression: str) -> Tuple[Optional[int], str]:
         # check item type
         def is_int(item):
             return type(item) == int
@@ -192,14 +191,15 @@ class Helper:
 
     # return: [command_text, comment, count, dice, mod_act, mod_num]
     @staticmethod
-    def parse_simple_roll(text, default_count=1, default_dice=20, default_mod_act=None, default_mod_num=None) -> \
+    def parse_simple_roll(text: str, default_count: int = 1, default_dice: int = 20,
+                          default_mod_act: Optional[str] = None, default_mod_num: Optional[Union[str, int]] = None) -> \
             List[str, str, int, int, Optional[str], Optional[Union[int, str]]]:
         def eq(a, b) -> bool:
             if b is None:
                 return a is None
             return a == b
 
-        def get(d, name):
+        def get(d: dict, name: str) -> Optional[str]:
             if name in d:
                 return d[name]
             return None
@@ -228,7 +228,7 @@ class Helper:
                 command_text += mod_num
         return [command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num]
 
-    def is_user_has_stats_access(self, update, context) -> (bool, int, int):
+    def is_user_has_stats_access(self, update: Update, context: CallbackContext) -> Tuple[bool, int, int]:
         # has_access, chat_id, user_id
         chat_id, user_id = update.message.chat_id, update.message.from_user.id
         is_admin = user_id == Helper.MASTER_ID or (

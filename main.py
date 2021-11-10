@@ -1,6 +1,7 @@
 import logging
 import time
 import os
+from typing import Optional, Union
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from telegram import Update
@@ -43,26 +44,24 @@ class Rollbot(Helper):
     def stop(self):
         self.db.close()
 
-    def custom_roll_wrapper(self, cnt, dice):
+    def custom_roll_wrapper(self, cnt: int, dice: int):
         return lambda update, context: self.simple_roll(update, context, cnt, dice)
 
     # params: update and context
-    def simple_roll(self, update: Update, context, default_cnt=1, default_dice=20, mod_act=None, mod_num=None):
+    def simple_roll(self, update: Update, _, default_cnt: int = 1, default_dice: int = 20,
+                    mod_act: Optional[str] = None, mod_num: Optional[Union[str, int]] = None):
         parsed = self.parse_simple_roll(update.message.text, default_cnt, default_dice, mod_act, mod_num)
-        command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
-
+        _, _, rolls_cnt, rolls_dice, _, _ = parsed
         try:
-            # get numbers and generate text
-            rolls = [self.rnd(rolls_dice) for _ in range(rolls_cnt)]
-
+            rolls = [self.rnd(rolls_dice) for _ in range(rolls_cnt)]  # get numbers and generate text
             self.reply_to_message(update, self.create_rolls_message(update, rolls, default_cnt, default_dice, *parsed))
         except Exception as e:
-            update.message.reply_text("{}: {}\n{}".format(self.get_user_name(update), update.message.text[3:],
-                                                          ' + '.join(
-                                                              str(self.rnd(rolls_dice)) for _ in range(default_cnt))))
+            text = "{}: {}\n{}".format(self.get_user_name(update), update.message.text[3:],
+                                       ' + '.join(str(self.rnd(rolls_dice)) for _ in range(default_cnt)))
+            update.message.reply_text(text)
             raise e
 
-    def equation_roll(self, update, _):
+    def equation_roll(self, update: Update, _: CallbackContext):
         s, rolls, rest = self.roll_processing(update.message.text[2:])
         r = self.calc(s)
         self.reply_to_message(update, self.get_user_name(update) + ': ' + rest + '\n' + s + '\n' +
@@ -74,7 +73,7 @@ class Rollbot(Helper):
         update.message.reply_text('Pong!')
         print('ping!')
 
-    def add_global_command(self, update, context):
+    def add_global_command(self, update: Update, _: CallbackContext):
         if update.message.from_user.id == self.MASTER_ID:
             if update.message.text.count(' ') != 2:
                 return self.reply_to_message(update, self.ss.USAGE(update) + "/add_global /roll 1d20")
@@ -92,7 +91,7 @@ class Rollbot(Helper):
         else:
             self.reply_to_message(update, self.ss.ACCESS_DENIED(update))
 
-    def remove_global_command(self, update, _):
+    def remove_global_command(self, update: Update, _: CallbackContext):
         if update.message.from_user.id == self.MASTER_ID:
             if update.message.text.count(' ') != 1:
                 self.reply_to_message(update, self.ss.USAGE(update) + "/remove_global /roll")
@@ -107,7 +106,7 @@ class Rollbot(Helper):
         else:
             self.reply_to_message(update, self.ss.ACCESS_DENIED(update))
 
-    def get_global_commands(self, update, _):
+    def get_global_commands(self, update: Update, _: CallbackContext):
         rolls = self.db.get_all_global_rolls()
         msg = self.ss.GLOBAL_COMMANDS(update)
         for roll in rolls:
@@ -116,7 +115,7 @@ class Rollbot(Helper):
                 msg += roll.mod_act + roll.mod_num
         self.reply_to_message(update, msg)
 
-    def get_command_usage(self, update, context):
+    def get_command_usage(self, update: Update, context: CallbackContext):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
             rolls = self.db.filter_counting_data(chat_id, user_id=target_id, command=None)
@@ -152,7 +151,7 @@ class Rollbot(Helper):
             self.db.set_counting_data(roll)
             self.reply_to_message(update, msg)
 
-    def get_counting_criteria(self, update: Update, context: CallbackContext):
+    def get_counting_criteria(self, update: Update, _: CallbackContext):
         rolls = self.db.filter_counting_criteria(update.message.chat_id, command=None)
         msg = self.ss.CRITERIA(update)
         for roll in rolls:
@@ -194,7 +193,7 @@ class Rollbot(Helper):
             self.reply_to_message(update, msg)
 
     # get stats only to d20
-    def get_stats(self, update, _):
+    def get_stats(self, update: Update, _: CallbackContext):
         ts = update.message.text.split(' ', 2)
         if len(ts) > 1:
             dice = self.to_int(ts[1], default=20, max_v=1000000000)
@@ -212,7 +211,7 @@ class Rollbot(Helper):
         self.reply_to_message(update, msg)
 
     # get all stats
-    def get_full_stats(self, update, _):
+    def get_full_stats(self, update: Update, _: CallbackContext):
         msg = self.ss.STATS_UPTIME(update).format((time.time() - self.start_time) / 3600)
         stats = self.stats_to_dict()
         for key, rolls in sorted(stats.items()):
@@ -226,19 +225,19 @@ class Rollbot(Helper):
                 msg += addition
         self.reply_to_message(update, msg)
 
-    def help_handler(self, update, _):
+    def help_handler(self, update: Update, _: CallbackContext):
         text = self.ss.HELP_MESSAGE(update)
         if update.message.from_user.id == self.MASTER_ID:
             text += self.ss.HELP_MASTER(update)
         self.reply_to_message(update, text)
 
-    def add_command_handler(self, update, _):
+    def add_command_handler(self, update: Update, _: CallbackContext):
         user_id = update.message.from_user.id
         if user_id not in self.pending_rolls:
             self.pending_rolls.append(user_id)
         self.reply_to_message(update, self.ss.ADD_COMMAND(update), is_markdown=True)
 
-    def remove_command_handler(self, update, context):
+    def remove_command_handler(self, update: Update, context: CallbackContext):
         user_id = update.message.from_user.id
         ts = update.message.text.split()
         if len(ts) == 2:
@@ -253,7 +252,7 @@ class Rollbot(Helper):
         else:
             self.reply_to_message(update, self.ss.USAGE(update) + "`/remove your_cmd`", is_markdown=True)
 
-    def list_command_handlers(self, update, _):
+    def list_command_handlers(self, update: Update, _: CallbackContext):
         user_id = update.message.from_user.id
         custom_rolls = self.db.filter_custom_roll(user_id, shortcut=None)
         if len(custom_rolls) == 0:
@@ -268,7 +267,7 @@ class Rollbot(Helper):
                 msg += self.ss.CUSTOM_PENDING(update)
             self.reply_to_message(update, msg)
 
-    def all_commands_handler(self, update, context):
+    def all_commands_handler(self, update: Update, context: CallbackContext):
         if update.message.text is None or len(update.message.text) == 0 or update.message.text[0] != '/':
             return  # Not a command
         user_id = update.message.from_user.id
@@ -294,7 +293,7 @@ class Rollbot(Helper):
                 self.simple_roll(update, context, custom_roll.count, custom_roll.dice,
                                  custom_roll.mod_act, custom_roll.mod_num)
 
-    def db_commit(self, update, _):
+    def db_commit(self, update: Update, _: CallbackContext):
         if update.message.from_user.id == self.MASTER_ID:
             self.db.commit()
             update.message.reply_text(self.ss.OK(update))
@@ -310,7 +309,7 @@ class Rollbot(Helper):
 
 
 # start
-def init(token):
+def init(token: str):
     if not os.path.exists('data'):
         os.makedirs('data')
     rollbot = Rollbot()
