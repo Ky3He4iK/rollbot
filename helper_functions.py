@@ -282,7 +282,6 @@ class Helper:
             if default_cnt != 1:
                 text += rolls_sums + ' = '
             text += str(sum(rolls))
-        self.reply_to_message(update, text)
         criteria = self.db.get_counting_criteria(update.message.chat_id, command_text.split()[0])
         if criteria is not None and default_dice == rolls_dice:
             for i in range(rolls_cnt // default_cnt):
