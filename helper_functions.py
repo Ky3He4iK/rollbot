@@ -193,7 +193,7 @@ class Helper:
     @staticmethod
     def parse_simple_roll(text: str, default_count: int = 1, default_dice: int = 20,
                           default_mod_act: Optional[str] = None, default_mod_num: Optional[Union[str, int]] = None) -> \
-            List[str, str, int, int, Optional[str], Optional[Union[int, str]]]:
+            Tuple[str, str, int, int, Optional[str], Optional[Union[int, str]]]:
         def eq(a, b) -> bool:
             if b is None:
                 return a is None
@@ -226,7 +226,7 @@ class Helper:
                 command_text += mod_act + mod_num
             elif mod_num is not None:
                 command_text += mod_num
-        return [command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num]
+        return command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num
 
     def is_user_has_stats_access(self, update: Update, context: CallbackContext) -> Tuple[bool, int, int]:
         # has_access, chat_id, user_id
