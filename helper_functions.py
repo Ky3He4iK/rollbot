@@ -17,10 +17,10 @@ class Helper:
     # Scary regex. For "/r 1d20+5 asd" will match:
     # {'cmd': 'r', 'roll': '1', 'dice': '20', 'mod_act': '+', 'mod_val': '5', 'mod_sel': None, 'comment': 'asd'}
     # for "/r 2h": {'cmd': 'r', 'roll': '2', 'mod_sel': 'h'} (None fields are skipped)
-    COMMAND_REGEX = re.compile(r"/(?P<cmd>\w+)(@(?P<botname>\w+))?"
-                               r"\s?(?P<count>\d+)?(d(?P<dice>(\d+|%)))?"
-                               r"(((?P<mod_act>[+\-*/])(?P<mod_num>\d+))|(?P<mod_sel>[hlHL]))?"
-                               r"(\s(?P<comment>.*))?")
+    COMMAND_REGEX = re.compile(r"/(?P<cmd>\w+)(@(?P<botname>\w+))?(?# command)"
+                               r"\s?(?P<throw>(?P<count>\d+)?(d(?P<dice>\d+|%))?(?# throw)"
+                               r"(((?P<mod_act>[+\-*/])(?P<mod_num>\d+))|(?P<mod_sel>[hl]))?)?(?# mods)"
+                               r"(?P<comment>.*)?(?#comment)", re.IGNORECASE)
 
     def __init__(self):
         self.db = Database()
@@ -74,7 +74,7 @@ class Helper:
 
     @staticmethod
     def get_user_name(update: Update) -> str:
-        return str(update.message.from_user.name or update.message.from_user.firstname)
+        return str(update.message.from_user.name or update.message.from_user.first_name)
 
     # checks for sanity string. Returns first not sane index
     @staticmethod
@@ -124,7 +124,7 @@ class Helper:
         return s, rolls, rest
 
     @staticmethod
-    def calc(expression: str) -> Tuple[Optional[int], str]:
+    def calc(expression: str) -> Tuple[Optional[int], Optional[str], str]:  # -> [result, error, comment_prefix]
         # check item type
         def is_int(item):
             return type(item) == int
@@ -134,7 +134,7 @@ class Helper:
 
         # First part gets string and deletes whitespace
         # Then it creates the list and adds each individual character to the list
-        expr_list = [int(ch) if ord('0') <= ord(ch) <= ord('9') else ch for ch in expression.replace(' ', '')]
+        expr_list = [int(ch) if ch.isnumeric() else ch for ch in expression.replace(' ', '')]
         pos = 1
         # combine numbers together and check expression
         while pos < len(expr_list):
@@ -184,10 +184,12 @@ class Helper:
                     else:
                         pos += 1
                 if not changed:
-                    return None, "Invalid expression"
-            return int(expr_list[0]), ""
+                    if is_int(expr_list[0]) and all(map(is_str, expr_list[1:])):
+                        return int(expr_list[0]), None, ''.join(map(str, expr_list[1:]))
+                    return None, "Invalid expression", ""
+            return int(expr_list[0]), None, ""
         except ZeroDivisionError:
-            return None, "Division by zero"
+            return None, "Division by zero", ""
 
     # return: [command_text, comment, count, dice, mod_act, mod_num]
     @staticmethod
@@ -226,7 +228,7 @@ class Helper:
                 command_text += mod_act + mod_num
             elif mod_num is not None:
                 command_text += mod_num
-        return command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num
+        return command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num.lower()
 
     def is_user_has_stats_access(self, update: Update, context: CallbackContext) -> Tuple[bool, int, int]:
         # has_access, chat_id, user_id

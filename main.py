@@ -63,9 +63,9 @@ class Rollbot(Helper):
 
     def equation_roll(self, update: Update, _: CallbackContext):
         s, rolls, rest = self.roll_processing(update.message.text[2:])
-        r = self.calc(s)
-        self.reply_to_message(update, self.get_user_name(update) + ': ' + rest + '\n' + s + '\n' +
-                              (r[1] if r[0] is None else (' = ' + str(r[0]))))
+        res, error, comment_prefix = self.calc(s)
+        self.reply_to_message(update, self.get_user_name(update) + ': ' + comment_prefix + rest + '\n' + s + '\n' +
+                              (error if error is not None else (' = ' + str(res))))
 
     # just ping
     @staticmethod
