@@ -217,6 +217,8 @@ class Helper:
         if mod_act == '/':
             mod_act = '//'
         mod_num = get(match, 'mod_num') or get(match, 'mod_sel') or default_mod_num
+        if mod_num is not None:
+            mod_num = mod_num.lower()
         comment = get(match, 'comment') or ''
 
         if rolls_dice == default_dice and rolls_cnt == default_count and eq(mod_act, default_mod_act) and \
@@ -228,7 +230,7 @@ class Helper:
                 command_text += mod_act + mod_num
             elif mod_num is not None:
                 command_text += mod_num
-        return command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num.lower()
+        return command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num
 
     def is_user_has_stats_access(self, update: Update, context: CallbackContext) -> Tuple[bool, int, int]:
         # has_access, chat_id, user_id
