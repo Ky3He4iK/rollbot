@@ -3,7 +3,7 @@ import time
 import os
 from typing import Optional, Union
 
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, Defaults
 from telegram import Update
 
 import rollbot_secret_token
@@ -310,6 +310,7 @@ class Rollbot(Helper):
 
 # start
 def init(token: str):
+    Defaults.timeout = 60
     if not os.path.exists('data'):
         os.makedirs('data')
     rollbot = Rollbot()
@@ -321,7 +322,7 @@ def init(token: str):
     updater.dispatcher.add_handler(MessageHandler(Filters.text, rollbot.all_commands_handler))
     updater.dispatcher.add_error_handler(rollbot.error_handler)
 
-    updater.start_polling()
+    updater.start_polling(timeout=600)
     updater.idle()
     print("Stopping")
     rollbot.stop()

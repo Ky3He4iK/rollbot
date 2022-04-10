@@ -187,7 +187,9 @@ class Helper:
                     if is_int(expr_list[0]) and all(map(is_str, expr_list[1:])):
                         return int(expr_list[0]), None, ''.join(map(str, expr_list[1:]))
                     return None, "Invalid expression", ""
-            return int(expr_list[0]), None, ""
+            if is_int(expr_list[0]):
+                return int(expr_list[0]), None, ""
+            return None, "Invalid expression", ""
         except ZeroDivisionError:
             return None, "Division by zero", ""
 
