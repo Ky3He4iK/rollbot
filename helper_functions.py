@@ -239,7 +239,7 @@ class Helper:
         chat_id, user_id = update.message.chat_id, update.message.from_user.id
         is_admin = user_id == Helper.MASTER_ID or (
                 chat_id != user_id and Helper.get_chat_creator_id(context, chat_id, update.message.chat.type) == user_id
-        )
+        ) or update.message.chat.all_members_are_administrators
         if update.message.reply_to_message is not None:
             target_id = update.message.reply_to_message.from_user.id
         else:

@@ -14,6 +14,15 @@ class Stat:
 
 
 @dataclass
+class Mau:
+    user_id: int
+    min_roll: int
+    max_roll: int
+    min_cube: int
+    max_cube: int
+
+
+@dataclass
 class CustomRoll:
     user_id: int
     shortcut: str
@@ -55,6 +64,7 @@ STR_OR_INT_OR_ITER = Union[STR_OR_INT, Iterable[STR_OR_INT]]
 
 
 class ContentTypes:
+    MAU = "Mau"
     STAT = "Stat"
     CUSTOM_ROLL = "CustomRoll"
     GLOBAL_ROLL = "GlobalRoll"
@@ -71,6 +81,11 @@ class Database:
             ["dice", "result"],
             ["count"],
             "stats",
+        ],
+        ContentTypes.MAU: [
+            ["user_id"],
+            ["min_roll", "max_roll", "min_cube", "max_cube"],
+            "mau",
         ],
         ContentTypes.CUSTOM_ROLL: [
             ["user_id", "shortcut"],
@@ -135,6 +150,23 @@ class Database:
 
     def remove_stat(self, stat: Stat):
         return self.remove(stat, ContentTypes.STAT)
+
+        # mau
+
+    def get_mau(self, user_id: int) -> Optional[Mau]:
+        mau = self.get(Mau(user_id, 0, 0, 0, 0), ContentTypes.MAU)
+        if mau:
+            return Mau(*mau)
+        return None
+
+    def set_mau(self, mau: Mau):
+        return self.set(mau, ContentTypes.MAU)
+
+    def get_all_maus(self):
+        return [Mau(*row) for row in self.get_all(ContentTypes.MAU)]
+
+    def remove_mau(self, mau: Mau):
+        return self.remove(mau, ContentTypes.MAU)
 
     # custom roll
     def get_custom_roll(self, user_id: int, shortcut: str) -> Optional[CustomRoll]:

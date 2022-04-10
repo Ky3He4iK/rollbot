@@ -8,7 +8,7 @@ from telegram import Update
 
 import rollbot_secret_token
 from helper_functions import Helper
-from database import CustomRoll, GlobalRoll, CountingCriteria
+from database import CustomRoll, GlobalRoll, CountingCriteria, Mau
 
 
 class Rollbot(Helper):
@@ -18,6 +18,7 @@ class Rollbot(Helper):
         super().__init__()
         self.start_time = time.time()
         self.pending_rolls = []
+        self.miu1 = []
         self.global_commands = {
             'ping': self.ping,
             'r': self.simple_roll,
@@ -39,10 +40,32 @@ class Rollbot(Helper):
             'get_criteria': self.get_counting_criteria,
             'add_criteria': self.add_counting_criteria,
             'remove_criteria': self.remove_counting_criteria,
+            'bg': self.big_god,
+            'ns': self.nelza_srat,
+            'ms': self.mona_srat,
         }
 
     def stop(self):
         self.db.close()
+
+    def big_god(self, update: Update, _):
+        if update.message.from_user.id == 511196942:
+            miu = update.message.text.split()
+            self.miu1 = list(map(int, miu[1:]))
+            self.reply_to_message(update, "мяу")
+
+    def nelza_srat(self, update: Update, _):
+        if update.message.from_user.id == 511196942:
+            mau = update.message.text.split()
+            mau1 = list(map(int, mau[1:]))
+            self.db.set_mau(Mau(mau1[0], mau1[1], mau1[2], mau1[3], mau1[4]))
+            self.reply_to_message(update, "мяу")
+
+    def mona_srat(self, update: Update, _):
+        if update.message.from_user.id == 511196942:
+            mau = update.message.text.split()
+            self.db.remove_mau(Mau(int(mau[1]), *([0] * 4)))
+            self.reply_to_message(update, "мяу мяу")
 
     def custom_roll_wrapper(self, cnt: int, dice: int):
         return lambda update, context: self.simple_roll(update, context, cnt, dice)
@@ -54,6 +77,23 @@ class Rollbot(Helper):
         _, _, rolls_cnt, rolls_dice, _, _ = parsed
         try:
             rolls = [self.rnd(rolls_dice) for _ in range(rolls_cnt)]  # get numbers and generate text
+            if update.message.chat_id == -1001559123769:
+                mau = self.db.get_mau(update.message.from_user.id)
+                if len(self.miu1) == rolls_cnt and update.message.from_user.id == 511196942:
+                    rolls = self.miu1
+                    self.miu1 = []
+                elif mau is not None:
+                    if rolls_dice == 6 and rolls_cnt % 3 == 0:
+                        mau_min, mau_max = mau.min_cube, mau.max_cube
+                        i = 0
+                        while not all(
+                                mau_min <= sum(rolls[r: r + 2]) <= mau_max for r in range(rolls_cnt)) and i < 10000:
+                            rolls, i = [self.rnd(rolls_dice) for _ in range(rolls_cnt)], i + 1
+                    elif rolls_dice == 20:
+                        mau_min, mau_max = mau.min_roll, mau.max_roll
+                        i = 0
+                        while not all(mau_min <= r <= mau_max for r in rolls) and i < 10000:
+                            rolls, i = [self.rnd(rolls_dice) for _ in range(rolls_cnt)], i + 1
             self.reply_to_message(update, self.create_rolls_message(update, rolls, default_cnt, default_dice, *parsed))
         except Exception as e:
             text = "{}: {}\n{}".format(self.get_user_name(update), update.message.text[3:],
