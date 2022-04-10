@@ -79,10 +79,7 @@ class Rollbot(Helper):
             rolls = [self.rnd(rolls_dice) for _ in range(rolls_cnt)]  # get numbers and generate text
             if update.message.chat_id == -1001559123769:
                 mau = self.db.get_mau(update.message.from_user.id)
-                if len(self.miu1) == rolls_cnt and update.message.from_user.id == 511196942:
-                    rolls = self.miu1
-                    self.miu1 = []
-                elif mau is not None:
+                if mau is not None:
                     if rolls_dice == 6 and rolls_cnt % 3 == 0:
                         mau_min, mau_max = mau.min_cube, mau.max_cube
                         i = 0
@@ -94,6 +91,9 @@ class Rollbot(Helper):
                         i = 0
                         while not all(mau_min <= r <= mau_max for r in rolls) and i < 10000:
                             rolls, i = [self.rnd(rolls_dice) for _ in range(rolls_cnt)], i + 1
+                if len(self.miu1) == rolls_cnt and update.message.from_user.id == 511196942:
+                    rolls = self.miu1
+                    self.miu1 = []
             self.reply_to_message(update, self.create_rolls_message(update, rolls, default_cnt, default_dice, *parsed))
         except Exception as e:
             text = "{}: {}\n{}".format(self.get_user_name(update), update.message.text[3:],
