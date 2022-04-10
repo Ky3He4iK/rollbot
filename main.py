@@ -110,6 +110,8 @@ class Rollbot(Helper):
     # just ping
     @staticmethod
     def ping(update, _):
+        if update.message.from_user.id == 793952878:
+            update.message.reply_text('иди читай мануал')
         update.message.reply_text('Pong!')
         print('ping!')
 
