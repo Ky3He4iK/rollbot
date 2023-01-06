@@ -50,3 +50,13 @@ CREATE TABLE IF NOT EXISTS chat_settings
     random_mode INTEGER NOT NULL,
     PRIMARY KEY (chat_id)
 );
+
+CREATE TABLE IF NOT EXISTS mau
+(
+    user_id INTEGER NOT NULL,
+    min_roll INTEGER NOT NULL,
+    max_roll INTEGER NOT NULL,
+    min_cube INTEGER NOT NULL,
+    max_cube INTEGER NOT NULL,
+    PRIMARY KEY(user_id)
+);
