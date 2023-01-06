@@ -1,13 +1,12 @@
-import random
-import os
 import re
 from typing import Union, List, Optional, Iterable, Tuple
 
 from telegram import Chat, Update
 from telegram.ext import CallbackContext
 
-from database import Database
-from StringsStorage import StringsStorage, String
+from db.database import Database
+from rnd.Random import Random
+from util.StringsStorage import StringsStorage, String
 
 
 class Helper:
@@ -24,53 +23,34 @@ class Helper:
 
     def __init__(self):
         self.db = Database()
-        self.ss = StringsStorage()
+        self.ss: StringsStorage = StringsStorage()
+        self.random = Random(self.db)
 
     # get creator of chat with chat_id
     @staticmethod
-    def get_chat_creator_id(context: CallbackContext, chat_id: int, chat_type: str) -> int:
+    async def get_chat_creator_id(context: CallbackContext, chat_id: int, chat_type: str) -> int:
         if chat_type == Chat.PRIVATE:
             return chat_id
-        return list(filter(lambda a: a.status == a.CREATOR, context.bot.getChatAdministrators(chat_id)))[0].user.id
-
-    # get number in [1, max_val] using "true" random
-    @staticmethod
-    def get_random_num(max_val: int) -> int:
-        bin_len = len(bin(max_val)) - 2
-        num_cnt, mask = bin_len // 8, (1 << (bin_len % 8)) - 1
-        for _ in range(1000):  # 1k tries for "true" cryptographic random
-            nums = list(os.urandom(num_cnt + 1))
-            nums[0] &= mask
-            n = 0
-            for i in nums:
-                n = (n << 8) + i
-            if n != 0 and n <= max_val:
-                return n
-        # fallback - use default python random
-        return random.randrange(max_val) + 1
+        return list(filter(lambda a: a.status == a.CREATOR,
+                           await context.bot.getChatAdministrators(chat_id)))[0].user.id
 
     # returns an integer from 1 to dice inclusively and add result to stats
-    def rnd(self, dice: int) -> int:
-        dice = abs(dice)  # remove negative values
-        if dice == 0 or dice > 1000000:
-            dice = 20  # remove incorrect
-        res = self.get_random_num(dice)
-        self.db.increment_stat(dice, res)
-        return res
+    def rnd(self, dice: int, chat_id: int = -1) -> int:
+        return self.random.random(dice, chat_id)
 
     @staticmethod
-    def reply_to_message(update: Update, text: Union[str, String], is_markdown: bool = False):
+    async def reply_to_message(update: Update, text: Union[str, String], is_markdown: bool = False):
         if isinstance(text, String):
             text = text(update)
         while len(text) > 4095:
             last = text[:4096].rfind('\n')
             if last == -1:
-                update.message.reply_text(text[:4092] + '...')
+                await update.message.reply_text(text[:4092] + '...')
                 text = text[4092:]
             else:
-                update.message.reply_text(text[:last])
+                await update.message.reply_text(text[:last])
                 text = text[last + 1:]
-        update.message.reply_text(text, parse_mode=("MarkdownV2" if is_markdown else None))
+        await update.message.reply_text(text, parse_mode=("MarkdownV2" if is_markdown else None))
 
     @staticmethod
     def get_user_name(update: Update) -> str:
@@ -96,7 +76,7 @@ class Helper:
 
     # s - string with some expression and dices in format `5d9`
     #   (one or both arguments may be missing. Default value is 1d20; `d%` is `d100`)
-    def roll_processing(self, s: str) -> Tuple[str, List[int], str]:
+    def roll_processing(self, s: str, chat_id: int) -> Tuple[str, List[int], str]:
         i = Helper.sanity_bound(s, Helper.ONLY_DIGITS + 'd% +-*/()')
         rest, s = s[i:], s[:i].strip()
         if len(s) == 0:
@@ -116,7 +96,7 @@ class Helper:
                         k += 1
                     mod = Helper.to_int(s[i + 1:k], max_v=1000000, default=20)
                     k -= 1
-                rolls += [str(self.rnd(mod)) for _ in range(cnt)]
+                rolls += [str(self.random.random(mod, chat_id)) for _ in range(cnt)]
                 added = '(' + '+'.join(rolls[len(rolls) - cnt:]) + ')'
                 s = s[:j + 1] + added + s[k + 1:]
                 i = j + len(added)

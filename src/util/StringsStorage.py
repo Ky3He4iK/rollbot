@@ -51,6 +51,15 @@ class StringsStorage:
     OK = String("Ок", "OK")
     ERROR = String("Error", "Oшибка")
     HISTORY = String("История:", "History:")
+    QUOTA_LEFT = String("Оставшаяся квота: {} бит (минимум {} бросков)", "Leftover quota: {} bit (at least {} rolls)")
+    CURRENT_RANDOM_MODE = String("Текущий режим: ", "Current random source: ")
+    RANDOM_MODES = {
+        0: String("local (локальный)", "local"),
+        1: String("hybrid (random.org для d6 и d20, локальный для остального)",
+                  "hybrid (random.org for d6 and d20 only)"),
+        2: String("remote (использовать только random.org)", "remote (only random.org)"),
+    }
+    NEW_RANDOM_MODE = String("Текущий режим:", "Current random source: ")
     HELP_MESSAGE = String("""
 /r - кинуть кости. Можно указать количество костей и количество граней на каждой кости, например /r 3d6 - куб на статы. Можно еще указать модификатор броска, например /r +3
 Указывается либо количество костей (число), либо количество граней (d + число), либо модификатор (знак модификатора - один из "-+*/" + число), либо любая их комбинация, например /r 5d8*3
@@ -79,6 +88,9 @@ class StringsStorage:
 /get_criteria - получить список запоминаемых роллов в чате
 /add_criteria /c1 N M - добавить команду /c1 к отслеживаемым броскам в этом чате. Запоминаться будут только броски с результатом от N до M включительно
 /remove_criteria /c1 - перестать отслеживать команду /c1
+/quota - оставшаяся квоту рандома на сегодня
+/get_mode - получить режим рандома
+/set_mode - задать режим рандома (local - использовать только рандом бота, hybrid - random.org только для d6 и d20, remote - использовать random.org для всех бросков)
 """, """
 /r - Throw dices. You can specify dice count and number of faces of each dice, for example /r 3d6 - cube for statistics check. You can also specify throw modifier, for example /r +3
 Specify either the number of bones (number), or the number of faces (d + number), or a modifier (modifier sign - one of "-+*/" + number), or any combination of them, for example /r 5d8*3
@@ -107,6 +119,9 @@ Someone else's statistics can only be viewed and reset by the creator of the cha
 /get_criteria - get a list of memorized rolls in the chat 
 /add_criteria /c1 N M - add command /c1 to tracked throws in this chat. Only throws with a result from N to M will be remembered. 
 /remove_criteria /c1 - stop tracking the command /c1
+/quota - get leftover random quota for today
+/get_mode - get random mode
+/set_mode - set random mode (local - use only Python's random, hybrid - remote only for d6 and d20, remote - use random.org for all dices)
 """)
     HELP_MASTER = String("""
 \n/add_globall /roll 1d20 - добавить новую глобальную комманду

@@ -1,9 +1,10 @@
-import sqlite3
 from dataclasses import dataclass
 from typing import Optional, Union, Iterable, List
 import logging
-import os
-import json
+from enum import Enum
+import asyncio
+
+import aiosqlite
 
 
 @dataclass
@@ -57,6 +58,18 @@ class CountingData:
     count: int
 
 
+@dataclass
+class ChatSettings:
+    chat_id: int
+    random_mode: int
+
+
+class RandomModeTypes(Enum):
+    MODE_LOCAL = 0
+    MODE_HYBRID = 1
+    MODE_REMOTE = 2
+
+
 #  Сокращение некоторых внутренних типов
 STR_OR_INT = Union[str, int]
 STR_OR_ITER = Union[str, Iterable[str]]
@@ -70,6 +83,7 @@ class ContentTypes:
     GLOBAL_ROLL = "GlobalRoll"
     COUNTING_CRITERIA = "CountingCriteria"
     COUNTING_DATA = "CountingData"
+    CHAT_SETTINGS = "ChatSettings"
 
 
 class Database:
@@ -107,10 +121,16 @@ class Database:
             ["count"],
             "counting_data",
         ],
+        ContentTypes.CHAT_SETTINGS: [
+            ["chat_id"],
+            ["random_mode"],
+            "chat_settings",
+        ],
     }
 
     def __init__(self):
-        self._base = sqlite3.connect("data/rollbot.db", check_same_thread=False)
+        loop = asyncio.get_event_loop()
+        self._base = loop.run_until_complete(aiosqlite.connect("data/rollbot.db", check_same_thread=False))
         self._base.isolation_level = None
         with open('create_db.sql') as file:
             queries = file.read().split(';\n\n')
@@ -118,10 +138,12 @@ class Database:
                 self._execute(query)
 
     def close(self):
-        self._base.close()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._base.close())
 
     def commit(self):
-        self._base.commit()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._base.commit())
 
     # stat
     def get_stat(self, dice: int, result: int) -> Optional[Stat]:
@@ -258,6 +280,22 @@ class Database:
     def remove_counting_data(self, counting_data: CountingData):
         return self.remove(counting_data, ContentTypes.COUNTING_DATA)
 
+    # chat settings
+    def get_chat_settings(self, chat_id: int) -> Optional[ChatSettings]:
+        chat_settings = self.get(ChatSettings(chat_id, 0), ContentTypes.CHAT_SETTINGS)
+        if chat_settings:
+            return ChatSettings(*chat_settings)
+        return None
+
+    def set_chat_settings(self, chat_settings: ChatSettings):
+        return self.set(chat_settings, ContentTypes.CHAT_SETTINGS)
+
+    def get_all_chat_settings(self):
+        return [ChatSettings(*row) for row in self.get_all(ContentTypes.CHAT_SETTINGS)]
+
+    def remove_chat_settings(self, chat_settings: ChatSettings):
+        return self.remove(chat_settings, ContentTypes.CHAT_SETTINGS)
+
     # internal universal methods
     def set(self, obj, classname: str):
         if self.contains(obj, classname):
@@ -313,12 +351,13 @@ class Database:
     # Честно стырено из другого моего проекта
     # выполнение SQL запроса
     # возвращает результат запроса
-    def _execute(self, query: str) -> Optional[sqlite3.Cursor]:
+    def _execute(self, query: str) -> Optional[aiosqlite.Cursor]:
         try:
-            res = self._base.execute(query)
-            self._base.commit()
+            loop = asyncio.get_event_loop()
+            res = loop.run_until_complete(self._base.execute(query))
+            loop.run_until_complete(self._base.commit())
             return res
-        except sqlite3.Error as e:
+        except aiosqlite.Error as e:
             logging.error('Error: {} ({}) caused by query `{}`'.format(e, type(e), query))
             return None
 
@@ -374,7 +413,8 @@ class Database:
         query += rest
         res = self._execute(query)
         if res is not None:
-            return res.fetchall()
+            loop = asyncio.get_event_loop()
+            return list(list(*row) for row in loop.run_until_complete(res.fetchall()))
         return []
 
     def _insert(self,
@@ -471,33 +511,3 @@ class Database:
             return "'" + val.replace("'", "''") + "'"
         else:
             return str(val).replace("'", "''")
-
-
-def import_data():
-    db = Database()
-    with open('create_db.sql') as file:
-        queries = file.read().split(';\n\n')
-        for query in queries:
-            db._execute(query)
-    if os.path.isfile("data/stats.json"):
-        # convert dict's keys from str to int
-        stats_t = json.loads(open("data/stats.json").read())
-        stats = {int(dice): {int(res): stats_t[dice][res] for res in stats_t[dice]} for dice in stats_t}
-        for dice, stat in stats.items():
-            for roll, count in stat.items():
-                db.set_stat(Stat(dice, roll, count))
-    if os.path.isfile("data/custom_rolls.json"):
-        custom_rolls_t = json.loads(open("data/custom_rolls.json").read())
-        custom_rolls = {int(user_id): custom_rolls_t[user_id] for user_id in custom_rolls_t}
-        get_field = lambda dict, key: dict[key] if key in dict else None
-        for user_id, rolls in custom_rolls.items():
-            for roll, roll_data in rolls.items():
-                if roll == '':
-                    continue
-                db.set_custom_roll(CustomRoll(user_id, roll, roll_data["cnt"], roll_data["rolls_dice"],
-                                              get_field(roll_data, "mod_act"), get_field(roll_data, "mod_num")))
-    db.close()
-
-
-if __name__ == '__main__':
-    import_data()

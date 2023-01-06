@@ -1,18 +1,19 @@
+import asyncio
 import logging
 import time
 import os
 from typing import Optional, Union
 
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, Defaults
+from telegram.ext import CommandHandler, MessageHandler, filters, CallbackContext, Defaults, Application, AIORateLimiter
 from telegram import Update
 
-import rollbot_secret_token
-from helper_functions import Helper
-from database import CustomRoll, GlobalRoll, CountingCriteria, Mau
+from util import rollbot_secret_token
+from helper import Helper
+from db.database import CustomRoll, GlobalRoll, CountingCriteria, RandomModeTypes, ChatSettings, Mau
 
 
 class Rollbot(Helper):
-    def __init__(self):
+    def __init__(self, tg_token: str):
         logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                             level=logging.INFO, filename="data/rollbot.log")
         super().__init__()
@@ -40,12 +41,21 @@ class Rollbot(Helper):
             'get_criteria': self.get_counting_criteria,
             'add_criteria': self.add_counting_criteria,
             'remove_criteria': self.remove_counting_criteria,
+            'quota': self.get_quota,
+            'get_mode': self.get_random_mode,
+            'set_mode': self.set_random_mode,
             'bg': self.big_god,
             'ns': self.nelza_srat,
             'ms': self.mona_srat,
         }
+        self.app = Application.builder().token(tg_token).rate_limiter(AIORateLimiter()).build()
+        for command, func in self.global_commands.items():
+            self.app.add_handler(CommandHandler(command, func))
+        self.app.add_handler(MessageHandler(filters.TEXT, self.all_commands_handler))
+        self.app.dispatcher.add_error_handler(self.error_handler)
 
     def stop(self):
+        self.random.remote.stop()
         self.db.close()
 
     def big_god(self, update: Update, _):
@@ -71,12 +81,13 @@ class Rollbot(Helper):
         return lambda update, context: self.simple_roll(update, context, cnt, dice)
 
     # params: update and context
-    def simple_roll(self, update: Update, _, default_cnt: int = 1, default_dice: int = 20,
-                    mod_act: Optional[str] = None, mod_num: Optional[Union[str, int]] = None):
+    async def simple_roll(self, update: Update, _, default_cnt: int = 1, default_dice: int = 20,
+                          mod_act: Optional[str] = None, mod_num: Optional[Union[str, int]] = None):
         parsed = self.parse_simple_roll(update.message.text, default_cnt, default_dice, mod_act, mod_num)
         _, _, rolls_cnt, rolls_dice, _, _ = parsed
         try:
-            rolls = [self.rnd(rolls_dice) for _ in range(rolls_cnt)]  # get numbers and generate text
+            # get numbers and generate text
+            rolls = [self.random.random(rolls_dice, update.message.chat_id) for _ in range(rolls_cnt)]
             if update.message.chat_id == -1001559123769:
                 mau = self.db.get_mau(update.message.from_user.id)
                 if mau is not None:
@@ -94,28 +105,30 @@ class Rollbot(Helper):
                 if len(self.miu1) == rolls_cnt and update.message.from_user.id == 511196942:
                     rolls = self.miu1
                     self.miu1 = []
-            self.reply_to_message(update, self.create_rolls_message(update, rolls, default_cnt, default_dice, *parsed))
+            await self.reply_to_message(update,
+                                        self.create_rolls_message(update, rolls, default_cnt, default_dice, *parsed))
         except Exception as e:
             text = "{}: {}\n{}".format(self.get_user_name(update), update.message.text[3:],
-                                       ' + '.join(str(self.rnd(rolls_dice)) for _ in range(default_cnt)))
-            update.message.reply_text(text)
+                                       ' + '.join(str(self.random.random(rolls_dice)) for _ in range(default_cnt)))
+            await update.message.reply_text(text)
             raise e
 
-    def equation_roll(self, update: Update, _: CallbackContext):
-        s, rolls, rest = self.roll_processing(update.message.text[2:])
+    async def equation_roll(self, update: Update, _: CallbackContext):
+        s, rolls, rest = self.roll_processing(update.message.text[2:], update.message.chat_id)
         res, error, comment_prefix = self.calc(s)
-        self.reply_to_message(update, self.get_user_name(update) + ': ' + comment_prefix + rest + '\n' + s + '\n' +
-                              (error if error is not None else (' = ' + str(res))))
+        await self.reply_to_message(update,
+                                    self.get_user_name(update) + ': ' + comment_prefix + rest + '\n' + s + '\n' +
+                                    (error if error is not None else (' = ' + str(res))))
 
     # just ping
     @staticmethod
-    def ping(update, _):
+    async def ping(update, _):
         if update.message.from_user.id == 793952878:
             update.message.reply_text('иди читай мануал')
         update.message.reply_text('Pong!')
         print('ping!')
 
-    def add_global_command(self, update: Update, _: CallbackContext):
+    async def add_global_command(self, update: Update, _: CallbackContext):
         if update.message.from_user.id == self.MASTER_ID:
             if update.message.text.count(' ') != 2:
                 return self.reply_to_message(update, self.ss.USAGE(update) + "/add_global /roll 1d20")
@@ -124,19 +137,19 @@ class Rollbot(Helper):
             command_text, comment, rolls_cnt, rolls_dice, mod_act, mod_num = parsed
             roll = self.db.get_global_roll(shortcut)
             if roll is not None:
-                self.reply_to_message(update, self.ss.ALREADY_HAS_COMMAND(update))
+                await self.reply_to_message(update, self.ss.ALREADY_HAS_COMMAND(update))
             self.db.set_global_roll(GlobalRoll(shortcut, rolls_cnt, rolls_dice, mod_act, mod_num))
             msg = self.ss.COMMAND_ADDED_SUCCESSFULLY(update) + "\n{} - {}d{}".format(shortcut, rolls_cnt, rolls_dice)
             if mod_act is not None:
                 msg += mod_act + mod_num
-            self.reply_to_message(update, msg)
+            await self.reply_to_message(update, msg)
         else:
-            self.reply_to_message(update, self.ss.ACCESS_DENIED(update))
+            await self.reply_to_message(update, self.ss.ACCESS_DENIED(update))
 
-    def remove_global_command(self, update: Update, _: CallbackContext):
+    async def remove_global_command(self, update: Update, _: CallbackContext):
         if update.message.from_user.id == self.MASTER_ID:
             if update.message.text.count(' ') != 1:
-                self.reply_to_message(update, self.ss.USAGE(update) + "/remove_global /roll")
+                await self.reply_to_message(update, self.ss.USAGE(update) + "/remove_global /roll")
                 return
             shortcut = update.message.text.split()[1]
             res = self.db.remove_global_roll(GlobalRoll(shortcut, 1, 20))
@@ -144,32 +157,32 @@ class Rollbot(Helper):
                 msg = self.ss.COMMAND_REMOVED_SUCCESSFULLY(update)
             else:
                 msg = self.ss.UNKNOWN_COMMAND(update)
-            self.reply_to_message(update, msg)
+            await self.reply_to_message(update, msg)
         else:
-            self.reply_to_message(update, self.ss.ACCESS_DENIED(update))
+            await self.reply_to_message(update, self.ss.ACCESS_DENIED(update))
 
-    def get_global_commands(self, update: Update, _: CallbackContext):
+    async def get_global_commands(self, update: Update, _: CallbackContext):
         rolls = self.db.get_all_global_rolls()
         msg = self.ss.GLOBAL_COMMANDS(update)
         for roll in rolls:
             msg += "\n{} - {}d{}".format(roll.shortcut, roll.count, roll.dice)
             if roll.mod_act is not None:
                 msg += roll.mod_act + roll.mod_num
-        self.reply_to_message(update, msg)
+        await self.reply_to_message(update, msg)
 
-    def get_command_usage(self, update: Update, context: CallbackContext):
+    async def get_command_usage(self, update: Update, context: CallbackContext):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
             rolls = self.db.filter_counting_data(chat_id, user_id=target_id, command=None)
             if len(rolls) == 0:
-                self.reply_to_message(update, self.ss.NO_USER_STATS(update))
+                await self.reply_to_message(update, self.ss.NO_USER_STATS(update))
             else:
                 msg = self.ss.STATS(update)
                 for roll in rolls:
                     msg += "\n{} - {} ".format(roll.command, roll.count) + self.ss.TIMES(update)
-                self.reply_to_message(update, msg)
+                await self.reply_to_message(update, msg)
 
-    def reset_command_usage(self, update: Update, context: CallbackContext):
+    async def reset_command_usage(self, update: Update, context: CallbackContext):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         creator_id = self.get_chat_creator_id(context, chat_id, update.message.chat.type)
         if has_access:
@@ -191,9 +204,9 @@ class Rollbot(Helper):
                 roll.count = 0
                 msg = self.ss.RESET_OLD_VALUE(update) + str(count)
             self.db.set_counting_data(roll)
-            self.reply_to_message(update, msg)
+            await self.reply_to_message(update, msg)
 
-    def get_counting_criteria(self, update: Update, _: CallbackContext):
+    async def get_counting_criteria(self, update: Update, _: CallbackContext):
         rolls = self.db.filter_counting_criteria(update.message.chat_id, command=None)
         msg = self.ss.CRITERIA(update)
         for roll in rolls:
@@ -202,9 +215,9 @@ class Rollbot(Helper):
                 msg += ' ' + self.ss.FROM(update) + str(roll.min_value)
             if roll.max_value is not None:
                 msg += ' ' + self.ss.TO(update) + str(roll.max_value)
-        self.reply_to_message(update, msg)
+        await self.reply_to_message(update, msg)
 
-    def add_counting_criteria(self, update: Update, context: CallbackContext):
+    async def add_counting_criteria(self, update: Update, context: CallbackContext):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
             cmds = update.message.text.split(' ')
@@ -218,9 +231,9 @@ class Rollbot(Helper):
                 msg = self.ss.ERROR
         else:
             msg = self.ss.ACCESS_DENIED
-        self.reply_to_message(update, msg)
+        await self.reply_to_message(update, msg)
 
-    def remove_counting_criteria(self, update: Update, context: CallbackContext):
+    async def remove_counting_criteria(self, update: Update, context: CallbackContext):
         has_access, chat_id, target_id = self.is_user_has_stats_access(update, context)
         if has_access:
             cmds = update.message.text.split(' ')
@@ -232,10 +245,10 @@ class Rollbot(Helper):
                 msg = self.ss.NOTHING_DELETE
             else:
                 msg = self.ss.OK
-            self.reply_to_message(update, msg)
+            await self.reply_to_message(update, msg)
 
     # get stats only to d20
-    def get_stats(self, update: Update, _: CallbackContext):
+    async def get_stats(self, update: Update, _: CallbackContext):
         ts = update.message.text.split(' ', 2)
         if len(ts) > 1:
             dice = self.to_int(ts[1], default=20, max_v=1000000000)
@@ -250,10 +263,10 @@ class Rollbot(Helper):
                 msg += "\n{0}: {1:.3f}".format(roll, count * 100 / overall)
         else:
             msg = self.ss.NO_DICE_STATS(update)
-        self.reply_to_message(update, msg)
+        await self.reply_to_message(update, msg)
 
     # get all stats
-    def get_full_stats(self, update: Update, _: CallbackContext):
+    async def get_full_stats(self, update: Update, _: CallbackContext):
         msg = self.ss.STATS_UPTIME(update).format((time.time() - self.start_time) / 3600)
         stats = self.stats_to_dict()
         for key, rolls in sorted(stats.items()):
@@ -262,24 +275,25 @@ class Rollbot(Helper):
             for roll, count in sorted(rolls.items()):
                 addition = "\n{}: {:.3f}".format(roll, count * 100 / stat_sum)
                 if len(msg) + len(addition) > 4000:
-                    self.reply_to_message(update, msg)
+                    await self.reply_to_message(update, msg)
                     msg = ''
                 msg += addition
-        self.reply_to_message(update, msg)
+        await self.reply_to_message(update, msg)
 
-    def help_handler(self, update: Update, _: CallbackContext):
+    async def help_handler(self, update: Update, _: CallbackContext):
+        logging.info("Help request " + update.message.text)
         text = self.ss.HELP_MESSAGE(update)
         if update.message.from_user.id == self.MASTER_ID:
             text += self.ss.HELP_MASTER(update)
-        self.reply_to_message(update, text)
+        await self.reply_to_message(update, text)
 
-    def add_command_handler(self, update: Update, _: CallbackContext):
+    async def add_command_handler(self, update: Update, _: CallbackContext):
         user_id = update.message.from_user.id
         if user_id not in self.pending_rolls:
             self.pending_rolls.append(user_id)
-        self.reply_to_message(update, self.ss.ADD_COMMAND(update), is_markdown=True)
+        await self.reply_to_message(update, self.ss.ADD_COMMAND(update), is_markdown=True)
 
-    def remove_command_handler(self, update: Update, context: CallbackContext):
+    async def remove_command_handler(self, update: Update, context: CallbackContext):
         user_id = update.message.from_user.id
         ts = update.message.text.split()
         if len(ts) == 2:
@@ -288,17 +302,17 @@ class Rollbot(Helper):
                 custom_roll = self.db.get_custom_roll(user_id, cmd)
                 if custom_roll is not None:
                     self.db.remove_custom_roll(custom_roll)
-                    self.reply_to_message(update, self.ss.DELETED_COMMAND(update).format(cmd))
+                    await self.reply_to_message(update, self.ss.DELETED_COMMAND(update).format(cmd))
                 else:
-                    self.reply_to_message(update, self.ss.UNKNOWN_COMMAND(update))
+                    await self.reply_to_message(update, self.ss.UNKNOWN_COMMAND(update))
         else:
-            self.reply_to_message(update, self.ss.USAGE(update) + "`/remove your_cmd`", is_markdown=True)
+            await self.reply_to_message(update, self.ss.USAGE(update) + "`/remove your_cmd`", is_markdown=True)
 
-    def list_command_handlers(self, update: Update, _: CallbackContext):
+    async def list_command_handlers(self, update: Update, _: CallbackContext):
         user_id = update.message.from_user.id
         custom_rolls = self.db.filter_custom_roll(user_id, shortcut=None)
         if len(custom_rolls) == 0:
-            self.reply_to_message(update, self.ss.NO_CUSTOM(update))
+            await self.reply_to_message(update, self.ss.NO_CUSTOM(update))
         else:
             msg = self.ss.YOUR_COMMANDS(update)
             for custom_roll in custom_rolls:
@@ -307,9 +321,9 @@ class Rollbot(Helper):
                     msg += custom_roll.mod_act + custom_roll.mod_num
             if user_id in self.pending_rolls:
                 msg += self.ss.CUSTOM_PENDING(update)
-            self.reply_to_message(update, msg)
+            await self.reply_to_message(update, msg)
 
-    def all_commands_handler(self, update: Update, context: CallbackContext):
+    async def all_commands_handler(self, update: Update, context: CallbackContext):
         if update.message.text is None or len(update.message.text) == 0 or update.message.text[0] != '/':
             return  # Not a command
         user_id = update.message.from_user.id
@@ -326,27 +340,52 @@ class Rollbot(Helper):
                 msg = self.ss.COMMAND_ADDED_SUCCESSFULLY(update) + "\n{} - {}d{}".format(cmd, rolls_cnt, rolls_dice)
                 if mod_act is not None:
                     msg += mod_act + mod_num
-                self.reply_to_message(update, msg)
+                await self.reply_to_message(update, msg)
             else:
-                self.reply_to_message(update, self.ss.NEED_ARGUMENTS(update), is_markdown=True)
+                await self.reply_to_message(update, self.ss.NEED_ARGUMENTS(update), is_markdown=True)
         else:
             custom_roll = self.db.get_custom_roll(user_id, cmd)
             if custom_roll is not None:
-                self.simple_roll(update, context, custom_roll.count, custom_roll.dice,
-                                 custom_roll.mod_act, custom_roll.mod_num)
+                await self.simple_roll(update, context, custom_roll.count, custom_roll.dice,
+                                       custom_roll.mod_act, custom_roll.mod_num)
 
-    def db_commit(self, update: Update, _: CallbackContext):
+    async def db_commit(self, update: Update, _: CallbackContext):
         if update.message.from_user.id == self.MASTER_ID:
             self.db.commit()
-            update.message.reply_text(self.ss.OK(update))
+            await update.message.reply_text(self.ss.OK(update))
+
+    async def get_quota(self, update: Update, _: CallbackContext):
+        quota = await self.random.quota_left
+        await self.reply_to_message(update, self.ss.QUOTA_LEFT(update).format(quota, quota // 40))
+
+    async def get_random_mode(self, update: Update, _: CallbackContext):
+        settings = self.db.get_chat_settings(update.message.chat_id)
+        if settings:
+            mode = settings.random_mode
+        else:
+            mode = RandomModeTypes.MODE_HYBRID.value
+        await self.reply_to_message(update, self.ss.CURRENT_RANDOM_MODE(update) + self.ss.RANDOM_MODES[mode](update))
+
+    async def set_random_mode(self, update: Update, _: CallbackContext):
+        cmds = update.message.text.split(' ')
+        if len(cmds) == 1:
+            return self.reply_to_message(update, self.ss.USAGE(update) + "/set_mode local|hybrid|remote")
+        mode = cmds[1]
+        available_modes = ['local', 'hybrid', 'remote', '0', '1', '2']
+        if mode not in available_modes:
+            return self.reply_to_message(update, self.ss.USAGE(update) + "/set_mode local|hybrid|remote")
+        mode_num = available_modes.index(mode) % 3
+        chat_id = update.message.chat_id
+        self.db.set_chat_settings(ChatSettings(chat_id, mode_num))
+        await self.reply_to_message(update, self.ss.NEW_RANDOM_MODE(update) + self.ss.RANDOM_MODES[mode](update))
 
     # log all errors
-    def error_handler(self, update: Update, context: CallbackContext):
+    async def error_handler(self, update: Update, context: CallbackContext):
         logging.error('Error: {} ({} {}) caused.by {}'.format(context, type(context.error), context.error, update))
         print("Error: " + str(context.error))
         if update is not None and update.message is not None:
-            update.message.reply_text("Error")
-            context.bot.send_message(chat_id=self.MASTER_ID, text="Error: {} {} for message {}".format(
+            await update.message.reply_text("Error")
+            await context.bot.send_message(chat_id=self.MASTER_ID, text="Error: {} {} for message {}".format(
                 str(type(context.error))[:1000], str(context.error)[:2000], str(update.message.text)[:1000]))
 
 
@@ -355,19 +394,15 @@ def init(token: str):
     Defaults.timeout = 60
     if not os.path.exists('data'):
         os.makedirs('data')
-    rollbot = Rollbot()
-
-    updater = Updater(token=token, use_context=True)
-    # adding handlers
-    for command, func in rollbot.global_commands.items():
-        updater.dispatcher.add_handler(CommandHandler(command, func))
-    updater.dispatcher.add_handler(MessageHandler(Filters.text, rollbot.all_commands_handler))
-    updater.dispatcher.add_error_handler(rollbot.error_handler)
-
-    updater.start_polling(timeout=600)
-    updater.idle()
-    print("Stopping")
-    rollbot.stop()
+    rollbot = Rollbot(token)
+    try:
+        rollbot.app.run_polling()
+    finally:
+        print("Stopping")
+        rollbot.stop()
+        time.sleep(2)
+        loop = asyncio.get_event_loop()
+        loop.stop()
 
 
 if __name__ == '__main__':
